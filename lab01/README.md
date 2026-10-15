@@ -1,18 +1,19 @@
-### Цель:
+# ТЗ
+## Цель:
 - Cобрать схему CLOS и распределить адресное пространство  <br>
 
-### Описание/Пошаговая инструкция выполнения домашнего задания:
+## Описание/Пошаговая инструкция выполнения домашнего задания:
 - Собрать топологию CLOS, как на схеме:  <br>
 ![LAB01_CLOS.png](LAB01_CLOS.png)
 - Распределите адресное пространство для Underlay сети
 - Зафиксировать в документации план работ, адресное пространство, схему сети, настройки (если перенесли на оборудование)  <br>
 
-### Выполнение: 
+# Выполнение: 
 
-### Схема
+## Схема
 ![LAB01_DIAG.png](LAB01_DIAG.png)
 
-### Целевое распределение адресного пространства
+## Целевое распределение адресного пространства
 
 - 10.0.0.0/8 - LLC Private address space  <br>
 
@@ -28,10 +29,10 @@
 - 10.x.251.0/24 - P2P INTRASITE Underlay Transport from Spines to Boarder Leafs (/31) (.0-.63 - to BL1, .64-.127 - to BL2)  <br>
 
 
-### Вывод команд диагностики
+## Вывод команд диагностики
 
 ### S1-1
-'''
+```
 S1-1# sh ip int brief 
 
 IP Interface Status for VRF "default"(1)
@@ -75,9 +76,9 @@ L1-2(999J8AJU9LV)   Eth1/2         133    R S s     N9K-C9300v       Eth1/1
    
 
 Total entries displayed: 2
-'''
+```
 ### S1-2
-'''
+```
 S1-2# sh ip int brief 
 
 IP Interface Status for VRF "default"(1)
@@ -118,7 +119,6 @@ Device-ID          Local Intrfce  Hldtme Capability  Platform      Port ID
 L1-1(9YB5F0EY5AY)   Eth1/1         150    R S s     N9K-C9300v       Eth1/2     
    
 L1-2(999J8AJU9LV)   Eth1/2         172    R S s     N9K-C9300v       Eth1/2     
-'''  
 
 Total entries displayed: 2
-
+```

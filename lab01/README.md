@@ -31,6 +31,7 @@
 ### Вывод команд диагностики
 
 ### S1-1
+'''
 S1-1# sh ip int brief 
 
 IP Interface Status for VRF "default"(1)
@@ -74,8 +75,9 @@ L1-2(999J8AJU9LV)   Eth1/2         133    R S s     N9K-C9300v       Eth1/1
    
 
 Total entries displayed: 2
-
+'''
 ### S1-2
+'''
 S1-2# sh ip int brief 
 
 IP Interface Status for VRF "default"(1)
@@ -116,7 +118,7 @@ Device-ID          Local Intrfce  Hldtme Capability  Platform      Port ID
 L1-1(9YB5F0EY5AY)   Eth1/1         150    R S s     N9K-C9300v       Eth1/2     
    
 L1-2(999J8AJU9LV)   Eth1/2         172    R S s     N9K-C9300v       Eth1/2     
-   
+'''  
 
 Total entries displayed: 2
 

@@ -77,6 +77,7 @@ L1-2(999J8AJU9LV)   Eth1/2         133    R S s     N9K-C9300v       Eth1/1
 
 Total entries displayed: 2
 ```
+
 ### S1-2
 ```
 S1-2# sh ip int brief 
@@ -121,4 +122,27 @@ L1-1(9YB5F0EY5AY)   Eth1/1         150    R S s     N9K-C9300v       Eth1/2
 L1-2(999J8AJU9LV)   Eth1/2         172    R S s     N9K-C9300v       Eth1/2     
 
 Total entries displayed: 2
+```
+
+### L1-1
+```
+L1-1# sh ip int bri
+
+IP Interface Status for VRF "default"(1)
+Interface            IP Address      Interface Status
+Lo0                  10.1.255.11     protocol-up/link-up/admin-up       
+Lo1                  10.1.254.11     protocol-up/link-up/admin-up       
+Eth1/1               10.1.241.1      protocol-up/link-up/admin-up       
+Eth1/2               10.1.242.1      protocol-up/link-up/admin-up       
+```
+### L1-2
+```
+L1-2# sh ip int bri
+
+IP Interface Status for VRF "default"(1)
+Interface            IP Address      Interface Status
+Lo0                  10.1.255.12     protocol-up/link-up/admin-up       
+Lo1                  10.1.254.12     protocol-up/link-up/admin-up       
+Eth1/1               10.1.241.3      protocol-up/link-up/admin-up       
+Eth1/2               10.1.242.3      protocol-up/link-up/admin-up  
 ```

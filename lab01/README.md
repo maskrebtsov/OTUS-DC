@@ -15,10 +15,10 @@
 - DC2 - 10.2.0.0/16  <br>
 
 - 10.x.255.0/24 - Lo0 RID (/32) (.1-.10 - S, .11-.250 - L, .251-.254 - BL)
-- 10.x.254.0/24 - Lo1 VTEP (/32) (.1-.10 - S, .11-.250 - L, .251-.254 - BL)  <br>
+- 10.x.254.0/24 - Lo1 VTEP_ID (/32) (.1-.10 - S, .11-.250 - L, .251-.254 - BL)  <br>
 
 - 10.х.241.0/24 - P2P INTRASITE Underlay Transport from Spine1 to Leafs (/31) 
-- 10.х.242.0/24 - P2P INTRASITE Underlay Transport from Spine2 to Leafs(/31)  <br>
+- 10.х.242.0/24 - P2P INTRASITE Underlay Transport from Spine2 to Leafs (/31)  <br>
 
-- 10.x.251.0/24 - P2P INTRASITE Underlay Transport from Spines to Boarder Leafs(/31) (.0-.63 - to BL1, .64-.127 - to BL2)  <br>
+- 10.x.251.0/24 - P2P INTRASITE Underlay Transport from Spines to Boarder Leafs (/31) (.0-.63 - to BL1, .64-.127 - to BL2)  <br>
 

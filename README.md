@@ -2,7 +2,7 @@
  - [Lab01. Проектирование адресного пространства](lab01/)
  - [Lab02. Underlay. OSPF](lab02/)
  - [Lab03. Underlay. IS-IS](lab03/)
- - [Lab04. ...](lab04/)
+ - [Lab04. Underlay. BGP](lab04/)
  - [Lab05. ...](lab05/)
  - [Lab06. ...](lab06/)
  - [Lab07. ...](lab07/)

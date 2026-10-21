@@ -13,7 +13,7 @@ VxLAN. L2 VNI
 # Выполнение: 
 
 ## Схема
-![LAB01_DIAG.png](LAB01_DIAG.png)
+![LAB05_DIAG.png](LAB05_DIAG.png)
 
 ## Целевое распределение адресного пространства
 
@@ -730,6 +730,50 @@ th, no labeled nexthop, in rib
 
 L1-2# 
 	
-
 ```
 
+### Проверка доступности хоста по L2 VNI
+```
+host-1#ping 192.168.10.12 source 192.168.10.11
+Type escape sequence to abort.
+Sending 5, 100-byte ICMP Echos to 192.168.10.12, timeout is 2 seconds:
+Packet sent with a source address of 192.168.10.11 
+!!!!!
+Success rate is 100 percent (5/5), round-trip min/avg/max = 8/8/8 ms
+
+
+L1-1(config-if)# sh mac address-table 
+Legend: 
+        * - primary entry, G - Gateway MAC, (R) - Routed MAC, O - Overlay MAC
+        age - seconds since last seen,+ - primary entry using vPC Peer-Link,
+        (T) - True, (F) - False, C - ControlPlane MAC, ~ - vsan,
+        (NA)- Not Applicable A - ESI Active Path, S - ESI Standby Path
+        TL - True Learned, PS - Peer Sync, RO - Re-originate 
+   VLAN     MAC Address      Type      age     Secure NTFY Ports
+---------+-----------------+--------+---------+------+----+------------------
+C   10     5254.000e.3d6b   dynamic  NA         F      F    nve1(10.1.254.12)
+*   10     5254.00d0.ff3c   dynamic  NA         F      F    Eth1/10
+G    -     52ea.c915.1b08   static   -         F      F    sup-eth1(R)
+
+
+L1-1(config-if)# sh l2route evpn mac all 
+
+Flags -(Rmac):Router MAC (Stt):Static (L):Local (R):Remote 
+(Dup):Duplicate (Spl):Split (Rcv):Recv (AD):Auto-Delete (D):Del Pending
+(S):Stale (C):Clear, (Ps):Peer Sync (Ro):Re-Originated (Nho):NH-Override
+(Asy):Asymmetric (Gw):Gateway
+(Bh):Blackhole, (Dum):Dummy
+(Pf):Permanently-Frozen, (Orp): Orphan
+(PipOrp): Directly connected Orphan to PIP based vPC BGW 
+(PipPeerOrp): Orphan connected to peer of PIP based vPC BGW 
+
+NH Flags- (Asy): Asymmetric VNI
+
+Topology    Mac Address    Prod   Flags              Seq No     Next-Hops       
+                       
+----------- -------------- ------ ------------------ ---------- ----------------
+-----------------------------------------
+10          5254.000e.3d6b BGP    Rcv                0          10.1.254.12 (Label: 10010)
+10          5254.00d0.ff3c Local  L,                 0          Eth1/10
+
+```

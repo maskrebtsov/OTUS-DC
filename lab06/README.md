@@ -13,7 +13,7 @@ VxLAN. L3VNI
 # Выполнение: 
 
 ## Схема
-![LAB01_DIAG.png](LAB01_DIAG.png)
+![LAB06_DIAG.png](LAB06_DIAG.png)
 
 ## Целевое распределение адресного пространства
 

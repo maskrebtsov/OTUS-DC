@@ -7,3 +7,4 @@
  - [Lab06. VxLAN. EVPN L3](lab06/)
  - [Lab07. VXLAN. Multihoming](lab07/)
  - [Lab08. VxLAN. Routing](lab08/)
+ - [ПРОЕКТ. Бесшовная миграция инфраструктуры действующего ЦОД с технологии vPС на технологию VXLAN](PROJECT/)

@@ -23,7 +23,7 @@ VxLAN. Routing.
 - DC1 - 10.1.0.0/16
 	- 	 Vl 10 - 10.1.10.0/24 - DC-PROD vrf_DC-PROD	
 	-    Vl 20 - 10.1.20.0/24 - DC-CORP vrf_DC-CORP
-	-    Vl 300x - NO IP - L3VPN_VRF_<NAME> <br>
+	-    Vl 300x - NO IP - L3VPN_VRF_"NAME" <br>
     
 - DC2 - 10.2.0.0/16  (reserved) <br>
 
@@ -146,7 +146,7 @@ sirv vrf_DC-PROD
 sble
 sbles
 sblert5
-sble <ADDR>
+sble "ADDR"
 ```
 
 ## Вывод команд диагностики

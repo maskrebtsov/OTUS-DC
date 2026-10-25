@@ -74,8 +74,8 @@ Po1                      host-1 10.1.10.11
 Po2                      host-2 10.1.20.12
 Lo0                      RID 10.1.255.11/32
 Lo1                      VTEP_ID 10.1.254.11/32
-Vlan10                   DC-APP 10.1.10.0/24
-Vlan20                   DC-DB 10.1.20.0/24
+Vlan10                   DC-PROD 10.1.10.0/24
+Vlan20                   DC-CORP 10.1.20.0/24
 ```
 ### L1-2
 ```
@@ -87,20 +87,36 @@ Po1                      host-1 10.1.10.11
 Po2                      host-2 10.1.20.12
 Lo0                      RID 10.1.255.12/32
 Lo1                      VTEP_ID 10.1.254.12/32
-Vlan10                   DC-APP 10.1.10.0/24
-Vlan20                   DC-DB 10.1.20.0/24
+Vlan10                   DC-PROD 10.1.10.0/24
+Vlan20                   DC-CORP 10.1.20.0/24
 ```
 ### L1-3
 ```
-th1/1        eth    10G     host-3 10.1.10.13
+Eth1/1        eth    10G     host-3 10.1.10.13
 Eth1/2        eth    10G     host-4 10.1.20.14
+Eth1/51       eth    10G     to_LEGACY 10.1.252.0/31 vrf PROD
+Eth1/52       eth    10G     to_LEGACY 10.1.252.2/31 vrf CORP
 Eth1/61       eth    10G     L1-3_to_S1-1 10.1.241.5/31
 Eth1/62       eth    10G     L1-3_to_S1-2 10.1.242.5/31
 Lo0                      RID 10.1.255.13/32
 Lo1                      VTEP_ID 10.1.254.13/32
-Vlan10                   DC-APP 10.1.10.0/24
-Vlan20                   DC-DB 10.1.20.0/24
+Vlan10                   DC-PROD 10.1.10.0/24
+Vlan20                   DC-CORP 10.1.20.0/24
 ```
+
+### EDGE
+```
+Gi1                            up             up       to_VXLAN/EVPN_Fabric 10.1.252.1/31 vrf PROD
+Gi2                            up             up       to_VXLAN/EVPN_Fabric 10.1.252.3/31 vrf CORP
+Gi3                            up             up       to_LEGACY 192.168.0.0/16
+Gi3.1                          up             up       LEGACY 192.168.10.0/24
+Gi3.2                          up             up       LEGACY 192.168.20.0/24
+Gi3.3                          up             up       LEGACY 192.168.30.0/24
+Gi3.4                          up             up       LEGACY 192.168.40.0/24
+Lo0                            up             up       RID
+Lo1                            up             up       for VXLAN Fabric ID
+```
+
 
 ### Используемые алиасы команд
 ```

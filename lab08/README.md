@@ -21,7 +21,7 @@ VxLAN. Routing.
 192.168.0.0/16 - EXTERNAL LEGACY SEGMENT <br>
 
 - DC1 - 10.1.0.0/16
-	- 	 Vl 10 - 10.1.10.0/24 - DC-APP vrf_DC-PROD	
+	- 	 Vl 10 - 10.1.10.0/24 - DC-CORP vrf_DC-PROD	
 	-    Vl 20 - 10.1.20.0/24 - DC-CORP vrf_DC-CORP
 	-    Vl 300x - NO IP - L3VPN_VRF_<NAME> <br>
     

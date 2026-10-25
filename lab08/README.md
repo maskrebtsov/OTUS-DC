@@ -13,7 +13,7 @@ VxLAN. Routing.
 # Выполнение: 
 
 ## Схема
-![LAB01_DIAG.png](LAB08_DIAG.png)
+![LAB08_DIAG.png](LAB08_DIAG.png)
 
 ## Целевое распределение адресного пространства
 
@@ -21,7 +21,7 @@ VxLAN. Routing.
 192.168.0.0/16 - EXTERNAL LEGACY SEGMENT <br>
 
 - DC1 - 10.1.0.0/16
-	- 	 Vl 10 - 10.1.10.0/24 - DC-CORP vrf_DC-PROD	
+	- 	 Vl 10 - 10.1.10.0/24 - DC-PROD vrf_DC-PROD	
 	-    Vl 20 - 10.1.20.0/24 - DC-CORP vrf_DC-CORP
 	-    Vl 300x - NO IP - L3VPN_VRF_<NAME> <br>
     
@@ -153,37 +153,20 @@ sble <ADDR>
 
 ### host-1
 ```
-
-## Вывод команд диагностики
-
-### host-1
+...
 ```
 
-
-
-
-
-
-
-
-
-## Вывод команд диагностики
-
-### S1-1
+### EDGE
 ```
 ...
 ```
 
-### S1-2
-```
-...
-```
 ### L1-1
 ```
 ...
 ```
 
-### L1-2
+### L1-3
 ```
 ...
 ```

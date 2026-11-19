@@ -485,16 +485,17 @@ DC2 - 10.2.0.0/16 (reserved)<br>
 
 ## 9. Приложение 2. Поэтапные конфигурации CLI сетевого оборудования
 
-### Этап 0. Подготовка стыков с МСЭ (DC-EXT) и временный L2-мост
+### Этап 0. Подготовка стыков с МСЭ (DC-EXT), резервный OSPF между DC-BB и временный L2-мост
+**Цель:** Подготовить новую точку выхода во внешний мир и между зонами безопасности на уровне DC-BB без прерывания действующего трафика (который продолжает ходить через ядро DC-COR-01A/B). Для исключения потерь при единичном обрыве аплинка поднимается временный межблочный L3-канал Po47 между DC-BB-01A и DC-BB-01B, а для связки старого и нового L2-доменов создаётся изолированный от STP мост Po49.
 
 #### 0.1. DC-EXT-01 (Межсетевой экран / внешний шлюз 1)
 <details>
-<summary>Добавление сабинтерфейсов зон безопасности .192, .193, .194 на интерфейсах Gi1 (к DC-BB-01A) и Gi2 (к DC-BB-01B) с включением OSPF и BFD:</summary>
+<summary>На физических линках Gi1 (к DC-BB-01A) и Gi2 (к DC-BB-01B) поднимаем недостающие сабинтерфейсы .192 (FE), .193 (BE) и .194 (DB), включаем на них OSPF Area 0 и BFD (без анонса 0.0.0.0/0 — передаются конкретные маршруты подсетей).</summary>
 
 ```eos
 	
 configure terminal
-!	
+! --- Создание сабинтерфейсов зон безопасности в сторону DC-BB-01A ---
 interface GigabitEthernet1.192
   description DC-BB-1A_to_EXT-01 IP 10.1.192.10/31
   encapsulation dot1Q 192
@@ -516,7 +517,7 @@ interface GigabitEthernet1.194
   ip ospf network point-to-point
   ip ospf bfd
   ip ospf 1 area 0
-!
+! --- Создание сабинтерфейсов зон безопасности в сторону DC-BB-01B ---
 interface GigabitEthernet2.192
   description DC-BB-1B_to_EXT-01 IP 10.1.192.14/31
   encapsulation dot1Q 192
@@ -538,7 +539,7 @@ interface GigabitEthernet2.194
   ip ospf network point-to-point
   ip ospf bfd
   ip ospf 1 area 0
-!
+! --- Разрешение рассылки OSPF Hello на новых сабинтерфейсах ---
 router ospf 1
   no passive-interface GigabitEthernet1.192
   no passive-interface GigabitEthernet1.193
@@ -554,12 +555,12 @@ end
 
 #### 0.2. DC-EXT-02 (Межсетевой экран / внешний шлюз 2)
 <details>
-<summary>Добавление сабинтерфейсов зон безопасности .192, .193, .194 на интерфейсах Gi1 (к DC-BB-01A) и Gi2 (к DC-BB-01B) с включением OSPF и BFD:</summary>
+<summary>Зеркально настраиваем стыки с DC-BB-01A и DC-BB-01B на втором узле периметра.</summary>
 
 ```eos
 	
 configure terminal
-!
+! --- Создание сабинтерфейсов зон безопасности в сторону DC-BB-01A ---
 interface GigabitEthernet1.192
   description DC-BB-1A_to_EXT-02 IP 10.1.192.12/31
   encapsulation dot1Q 192
@@ -581,7 +582,7 @@ interface GigabitEthernet1.194
   ip ospf network point-to-point
   ip ospf bfd
   ip ospf 1 area 0
-!
+! --- Создание сабинтерфейсов зон безопасности в сторону DC-BB-01B ---
 interface GigabitEthernet2.192
   description DC-BB-1B_to_EXT-02 IP 10.1.192.16/31
   encapsulation dot1Q 192
@@ -603,7 +604,7 @@ interface GigabitEthernet2.194
   ip ospf network point-to-point
   ip ospf bfd
   ip ospf 1 area 0
-!
+! --- Разрешение рассылки OSPF Hello на новых сабинтерфейсах ---
 router ospf 1
   no passive-interface GigabitEthernet1.192
   no passive-interface GigabitEthernet1.193
@@ -618,17 +619,17 @@ end
 
 #### 0.3. DC-BB-01A
 <details>
-<summary>Создание VRF vrf_DC-FE, vrf_DC-BE, vrf_DC-DB и настройка стыков с DC-EXT-01/02: </summary>
+<summary>Создаём недостающие контуры маршрутизации (FE, BE, DB), поднимаем стыки с DC-EXT-01/02, а также собираем временный межблочный L3-канал port-channel47.192–195 (сначала логический Po47, затем физические порты Eth1/47–48 с опцией force) для резервирования OSPF между BB-01A и BB-01B на период миграции. </summary>
 
 ```eos
 	
 configure terminal
-!
+! --- 1. Создание клиентских VLAN и недостающих VRF ---
 vlan 10,20,30,40,50
 vrf context vrf_DC-FE
 vrf context vrf_DC-BE
 vrf context vrf_DC-DB
-!
+! --- 2. Настройка внешних сабинтерфейсов в сторону DC-EXT-01 и DC-EXT-02 ---
 interface Ethernet1/11.192
   description vrf_DC-FE DC-BB-1A_to_EXT-01 IP 10.1.192.10/31
   encapsulation dot1q 192
@@ -690,7 +691,62 @@ interface Ethernet1/12.194
   ip router ospf DC area 0.0.0.0
   ip ospf bfd
   no shutdown
-!
+! --- 3. Временный межблочный L3 Port-Channel 47 к DC-BB-01B (сначала Po, затем физ. порты) ---
+interface port-channel47
+  description DC-BB-01B Po47 NO IP
+  no switchport
+  no shutdown
+
+interface port-channel47.192
+  description vrf_DC-FE DC-BB-1A_to_DC-BB-1B IP 10.1.192.250/31
+  encapsulation dot1q 192
+  vrf member vrf_DC-FE
+  ip address 10.1.192.250/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+
+interface port-channel47.193
+  description vrf_DC-BE DC-BB-1A_to_DC-BB-1B IP 10.1.193.250/31
+  encapsulation dot1q 193
+  vrf member vrf_DC-BE
+  ip address 10.1.193.250/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+
+interface port-channel47.194
+  description vrf_DC-DB DC-BB-1A_to_DC-BB-1B IP 10.1.194.250/31
+  encapsulation dot1q 194
+  vrf member vrf_DC-DB
+  ip address 10.1.194.250/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+
+interface port-channel47.195
+  description vrf_DC-CORP DC-BB-1A_to_DC-BB-1B IP 10.1.195.250/31
+  encapsulation dot1q 195
+  vrf member vrf_DC-CORP
+  ip address 10.1.195.250/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+
+interface Ethernet1/47 - 48
+  description DC-BB-01B Eth1/47-48 [Po47_OSPF_BACKUP]
+  no switchport
+  channel-group 47 force mode active
+  no shutdown
+! --- 4. Назначение уникального Router-ID в новых VRF процесса OSPF ---
 router ospf DC
   vrf vrf_DC-FE
     router-id 10.1.255.251
@@ -704,7 +760,7 @@ router ospf DC
 
 #### 0.4. DC-BB-01B
 <details>
-<summary>Создание VRF vrf_DC-FE, vrf_DC-BE, vrf_DC-DB и настройка стыков с DC-EXT-01/02:</summary>
+<summary>Зеркально настраиваем стыки с DC-EXT-01/02 (IP .14/31 и .16/31) и ответную сторону межблочного port-channel47.192–195 (IP .251/31).</summary>
 
 ```eos
 	
@@ -714,7 +770,7 @@ vlan 10,20,30,40,50
 vrf context vrf_DC-FE
 vrf context vrf_DC-BE
 vrf context vrf_DC-DB
-!
+! --- 1. Настройка внешних сабинтерфейсов в сторону DC-EXT-01 и DC-EXT-02 ---
 interface Ethernet1/11.192
   description vrf_DC-FE DC-BB-1A_to_EXT-01 IP 10.1.192.10/31
   encapsulation dot1q 192
@@ -776,7 +832,62 @@ interface Ethernet1/12.194
   ip router ospf DC area 0.0.0.0
   ip ospf bfd
   no shutdown
-!
+! --- 2. Временный межблочный L3 Port-Channel 47 к DC-BB-01A ---
+interface port-channel47
+  description DC-BB-01A Po47 NO IP
+  no switchport
+  no shutdown
+
+interface port-channel47.192
+  description vrf_DC-FE DC-BB-1A_to_DC-BB-1B IP 10.1.192.250/31
+  encapsulation dot1q 192
+  vrf member vrf_DC-FE
+  ip address 10.1.192.251/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+
+interface port-channel47.193
+  description vrf_DC-BE DC-BB-1A_to_DC-BB-1B IP 10.1.193.250/31
+  encapsulation dot1q 193
+  vrf member vrf_DC-BE
+  ip address 10.1.193.251/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+
+interface port-channel47.194
+  description vrf_DC-DB DC-BB-1A_to_DC-BB-1B IP 10.1.194.250/31
+  encapsulation dot1q 194
+  vrf member vrf_DC-DB
+  ip address 10.1.194.251/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+
+interface port-channel47.195
+  description vrf_DC-CORP DC-BB-1A_to_DC-BB-1B IP 10.1.195.250/31
+  encapsulation dot1q 195
+  vrf member vrf_DC-CORP
+  ip address 10.1.195.251/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+
+interface Ethernet1/47 - 48
+  description DC-BB-01A Eth1/47-48 [Po47_OSPF_BACKUP]
+  no switchport
+  channel-group 47 force mode active
+  no shutdown
+! --- 3. Назначение уникального Router-ID в новых VRF процесса OSPF ---
 router ospf DC
   vrf vrf_DC-FE
     router-id 10.1.255.251
@@ -791,46 +902,148 @@ end
 
 #### 0.5. Временный L2-мост (DC-COR-01A, DC-COR-01B, DC-BB-01A, DC-BB-01B)
 <details>
-<summary>Соединить порты Eth1/49 и Eth1/50 между парами COR и BB и выполнить на всех четырех коммутаторах:</summary>
+<summary>После соединения кабелями портов Eth1/49 и Eth1/50 между парами COR и BB создаём временный L2-мост Po49 с включённым spanning-tree bpdufilter enable и storm-control для полной изоляции STP-доменов. Выполняется на всех четырёх узлах.</summary>
 
 ```eos
 
 configure terminal
-!
 interface port-channel49
-  des TEMP_FOR_MIGRATION
+  description TEMP_L2_BRIDGE_COR_TO_BB
+  switchport
   switchport mode trunk
   switchport trunk allowed vlan 10,20,30,40,50
   switchport trunk native vlan 999
   spanning-tree bpdufilter enable
   storm-control broadcast level 1.00
   vpc 49
+  no shutdown
 !
 interface Ethernet1/49 - 50
-  des TEMP_FOR_MIGRATION
+  description TEMP_MIGRATION_BRIDGE
   switchport
   switchport mode trunk
   switchport trunk native vlan 999
-  channel-group 49 mode active
+  channel-group 49 force mode active
   no shutdown
 end
+
 
 ```	
 </details>
 
 ### Этап 1. Перевод плеча «B» (COR-01B, ACC-01B/02B/03B, BB-01B) в VXLAN EVPN
 
+Цель этапа: Развернуть VXLAN сети на правом плече («B»), пока весь боевой трафик пользователей обслуживается левым плечом («A»). Клиентские шлюзы (Anycast Gateway) на плече «B» создаются в состоянии shutdown, чтобы не конфликтовать с активным HSRP на DC-COR-01A.
+
 #### 1.1. DC-COR-01B → Spine-2 (AS 65001)
 <details>
-<summary>КОД</summary>
+<summary>Полностью очищаем коммутатор от функций классического ядра (vPC, HSRP, OSPF, SVI, VRF), настраиваем P2P-линки /31 с MTU 9216 ко всем 6 Leaf и 2 Border Leaf и запускаем iBGP AS 65001 в роли Route Reflector для Underlay (ipv4 unicast) и Overlay (l2vpn evpn).</summary>
 
 ```eos
 	
-	...
+configure terminal
+! --- 1. Демонтаж классической архитектуры ядра ---
+no feature vpc
+no feature hsrp
+no router ospf DC
+no interface Vlan10, Vlan20, Vlan30, Vlan40, Vlan50
+no interface port-channel1, port-channel3, port-channel5, port-channel49
+no interface port-channel61.192, port-channel61.193, port-channel61.194, port-channel61.195
+no interface port-channel61, port-channel63
+no interface loopback192, loopback193, loopback194, loopback195
+no vrf context vrf_DC-FE
+no vrf context vrf_DC-BE
+no vrf context vrf_DC-DB
+no vrf context vrf_DC-CORP
+
+! --- 2. Активация функционала BGP и EVPN ---
+feature bgp
+feature nv overlay
+nv overlay evpn
+
+interface loopback0
+  description SPINE-2 RID IP 10.1.255.2
+  ip address 10.1.255.2/32
+
+! --- 3. Настройка неблокируемых L3 P2P-линков Underlay (MTU 9216) ---
+default interface Ethernet1/1 - 6, Ethernet1/49 - 52, Ethernet1/59 - 64
+
+interface Ethernet1/1
+  description DC-ACC-01A Eth1/62 (Leaf-1)
+  no switchport
+  mtu 9216
+  ip address 10.1.242.0/31
+  no shutdown
+interface Ethernet1/2
+  description DC-ACC-01B Eth1/62 (Leaf-2)
+  no switchport
+  mtu 9216
+  ip address 10.1.242.2/31
+  no shutdown
+interface Ethernet1/3
+  description DC-ACC-02A Eth1/62 (Leaf-3)
+  no switchport
+  mtu 9216
+  ip address 10.1.242.4/31
+  no shutdown
+interface Ethernet1/4
+  description DC-ACC-02B Eth1/62 (Leaf-4)
+  no switchport
+  mtu 9216
+  ip address 10.1.242.6/31
+  no shutdown
+interface Ethernet1/5
+  description DC-ACC-03A Eth1/62 (Leaf-5)
+  no switchport
+  mtu 9216
+  ip address 10.1.242.8/31
+  no shutdown
+interface Ethernet1/6
+  description DC-ACC-03B Eth1/62 (Leaf-6)
+  no switchport
+  mtu 9216
+  ip address 10.1.242.10/31
+  no shutdown
+interface Ethernet1/51
+  description DC-BB-01A Eth1/52 (BL-1)
+  no switchport
+  mtu 9216
+  ip address 10.1.251.64/31
+  no shutdown
+interface Ethernet1/52
+  description DC-BB-01B Eth1/52 (BL-2)
+  no switchport
+  mtu 9216
+  ip address 10.1.251.66/31
+  no shutdown
+
+! --- 4. Настройка iBGP Route Reflector для Underlay и Overlay ---
+router bgp 65001
+  router-id 10.1.255.2
+  address-family ipv4 unicast
+    network 10.1.255.2/32
+    maximum-paths ibgp 4
+  neighbor 10.1.242.0/24
+    remote-as 65001
+    address-family ipv4 unicast
+      route-reflector-client
+  neighbor 10.1.251.64/26
+    remote-as 65001
+    address-family ipv4 unicast
+      route-reflector-client
+  neighbor 10.1.255.0/24
+    remote-as 65001
+    update-source loopback0
+    address-family l2vpn evpn
+      send-community
+      send-community extended
+      route-reflector-client
+end
+
 ```	
 </details>
 
-
+#### 1.2. DC-ACC-01B → Leaf-2
 
 
 

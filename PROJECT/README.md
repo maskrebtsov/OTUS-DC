@@ -485,13 +485,353 @@ DC2 - 10.2.0.0/16 (reserved)<br>
 
 ## 9. Приложение 2. Поэтапные конфигурации CLI сетевого оборудования
 
-### Этап 0. Подготовка инфраструктуры, консолидация зон безопасности и временный L2-мост
+### Этап 0. Подготовка стыков с МСЭ (DC-EXT) и временный L2-мост
 
-#### А.1. Оптимизация уровня доступа (DC-ACC-01A)
-Отключение агрессивного таймера LACP и корректировка параметров STP на межкоммутаторном канале Peer-Link.
+#### 0.1. DC-EXT-01 (Межсетевой экран / внешний шлюз 1)
+<details>
+<summary>Добавление сабинтерфейсов зон безопасности .192, .193, .194 на интерфейсах Gi1 (к DC-BB-01A) и Gi2 (к DC-BB-01B) с включением OSPF и BFD:</summary>
+
+```eos
+	
+configure terminal
+!	
+interface GigabitEthernet1.192
+  description DC-BB-1A_to_EXT-01 IP 10.1.192.10/31
+  encapsulation dot1Q 192
+  ip address 10.1.192.11 255.255.255.254
+  ip ospf network point-to-point
+  ip ospf bfd
+  ip ospf 1 area 0
+interface GigabitEthernet1.193
+  description DC-BB-1A_to_EXT-01 IP 10.1.193.10/31
+  encapsulation dot1Q 193
+  ip address 10.1.193.11 255.255.255.254
+  ip ospf network point-to-point
+  ip ospf bfd
+  ip ospf 1 area 0
+interface GigabitEthernet1.194
+  description DC-BB-1A_to_EXT-01 IP 10.1.194.10/31
+  encapsulation dot1Q 194
+  ip address 10.1.194.11 255.255.255.254
+  ip ospf network point-to-point
+  ip ospf bfd
+  ip ospf 1 area 0
+!
+interface GigabitEthernet2.192
+  description DC-BB-1B_to_EXT-01 IP 10.1.192.14/31
+  encapsulation dot1Q 192
+  ip address 10.1.192.15 255.255.255.254
+  ip ospf network point-to-point
+  ip ospf bfd
+  ip ospf 1 area 0
+interface GigabitEthernet2.193
+  description DC-BB-1B_to_EXT-01 IP 10.1.193.14/31
+  encapsulation dot1Q 193
+  ip address 10.1.193.15 255.255.255.254
+  ip ospf network point-to-point
+  ip ospf bfd
+  ip ospf 1 area 0
+interface GigabitEthernet2.194
+  description DC-BB-1B_to_EXT-01 IP 10.1.194.14/31
+  encapsulation dot1Q 194
+  ip address 10.1.194.15 255.255.255.254
+  ip ospf network point-to-point
+  ip ospf bfd
+  ip ospf 1 area 0
+!
+router ospf 1
+  no passive-interface GigabitEthernet1.192
+  no passive-interface GigabitEthernet1.193
+  no passive-interface GigabitEthernet1.194
+  no passive-interface GigabitEthernet2.192
+  no passive-interface GigabitEthernet2.193
+  no passive-interface GigabitEthernet2.194
+end
+
+```	
+</details>
 
 
-### Этап 1. Перевод плеча «B» в фабрику VXLAN EVPN
+#### 0.2. DC-EXT-02 (Межсетевой экран / внешний шлюз 2)
+<details>
+<summary>Добавление сабинтерфейсов зон безопасности .192, .193, .194 на интерфейсах Gi1 (к DC-BB-01A) и Gi2 (к DC-BB-01B) с включением OSPF и BFD:</summary>
+
+```eos
+	
+configure terminal
+!
+interface GigabitEthernet1.192
+  description DC-BB-1A_to_EXT-02 IP 10.1.192.12/31
+  encapsulation dot1Q 192
+  ip address 10.1.192.13 255.255.255.254
+  ip ospf network point-to-point
+  ip ospf bfd
+  ip ospf 1 area 0
+interface GigabitEthernet1.193
+  description DC-BB-1A_to_EXT-02 IP 10.1.193.12/31
+  encapsulation dot1Q 193
+  ip address 10.1.193.13 255.255.255.254
+  ip ospf network point-to-point
+  ip ospf bfd
+  ip ospf 1 area 0
+interface GigabitEthernet1.194
+  description DC-BB-1A_to_EXT-02 IP 10.1.194.12/31
+  encapsulation dot1Q 194
+  ip address 10.1.194.13 255.255.255.254
+  ip ospf network point-to-point
+  ip ospf bfd
+  ip ospf 1 area 0
+!
+interface GigabitEthernet2.192
+  description DC-BB-1B_to_EXT-02 IP 10.1.192.16/31
+  encapsulation dot1Q 192
+  ip address 10.1.192.17 255.255.255.254
+  ip ospf network point-to-point
+  ip ospf bfd
+  ip ospf 1 area 0
+interface GigabitEthernet2.193
+  description DC-BB-1B_to_EXT-02 IP 10.1.193.16/31
+  encapsulation dot1Q 193
+  ip address 10.1.193.17 255.255.255.254
+  ip ospf network point-to-point
+  ip ospf bfd
+  ip ospf 1 area 0
+interface GigabitEthernet2.194
+  description DC-BB-1B_to_EXT-02 IP 10.1.194.16/31
+  encapsulation dot1Q 194
+  ip address 10.1.194.17 255.255.255.254
+  ip ospf network point-to-point
+  ip ospf bfd
+  ip ospf 1 area 0
+!
+router ospf 1
+  no passive-interface GigabitEthernet1.192
+  no passive-interface GigabitEthernet1.193
+  no passive-interface GigabitEthernet1.194
+  no passive-interface GigabitEthernet2.192
+  no passive-interface GigabitEthernet2.193
+  no passive-interface GigabitEthernet2.194
+end
+
+```	
+</details>
+
+#### 0.3. DC-BB-01A
+<details>
+<summary>Создание VRF vrf_DC-FE, vrf_DC-BE, vrf_DC-DB и настройка стыков с DC-EXT-01/02: </summary>
+
+```eos
+	
+configure terminal
+!
+vlan 10,20,30,40,50
+vrf context vrf_DC-FE
+vrf context vrf_DC-BE
+vrf context vrf_DC-DB
+!
+interface Ethernet1/11.192
+  description vrf_DC-FE DC-BB-1A_to_EXT-01 IP 10.1.192.10/31
+  encapsulation dot1q 192
+  vrf member vrf_DC-FE
+  ip address 10.1.192.10/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+interface Ethernet1/11.193
+  description vrf_DC-BE DC-BB-1A_to_EXT-01 IP 10.1.193.10/31
+  encapsulation dot1q 193
+  vrf member vrf_DC-BE
+  ip address 10.1.193.10/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+interface Ethernet1/11.194
+  description vrf_DC-DB DC-BB-1A_to_EXT-01 IP 10.1.194.10/31
+  encapsulation dot1q 194
+  vrf member vrf_DC-DB
+  ip address 10.1.194.10/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+!
+interface Ethernet1/12.192
+  description vrf_DC-FE DC-BB-1A_to_EXT-02 IP 10.1.192.12/31
+  encapsulation dot1q 192
+  vrf member vrf_DC-FE
+  ip address 10.1.192.12/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+interface Ethernet1/12.193
+  description vrf_DC-BE DC-BB-1A_to_EXT-02 IP 10.1.193.12/31
+  encapsulation dot1q 193
+  vrf member vrf_DC-BE
+  ip address 10.1.193.12/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+interface Ethernet1/12.194
+  description vrf_DC-DB DC-BB-1A_to_EXT-02 IP 10.1.194.12/31
+  encapsulation dot1q 194
+  vrf member vrf_DC-DB
+  ip address 10.1.194.12/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+!
+router ospf DC
+  vrf vrf_DC-FE
+    router-id 10.1.255.251
+  vrf vrf_DC-BE
+    router-id 10.1.255.251
+  vrf vrf_DC-DB
+    router-id 10.1.255.251
+
+```	
+</details>
+
+#### 0.4. DC-BB-01B
+<details>
+<summary>Создание VRF vrf_DC-FE, vrf_DC-BE, vrf_DC-DB и настройка стыков с DC-EXT-01/02:</summary>
+
+```eos
+	
+configure terminal
+!
+vlan 10,20,30,40,50
+vrf context vrf_DC-FE
+vrf context vrf_DC-BE
+vrf context vrf_DC-DB
+!
+interface Ethernet1/11.192
+  description vrf_DC-FE DC-BB-1A_to_EXT-01 IP 10.1.192.10/31
+  encapsulation dot1q 192
+  vrf member vrf_DC-FE
+  ip address 10.1.192.10/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+interface Ethernet1/11.193
+  description vrf_DC-BE DC-BB-1A_to_EXT-01 IP 10.1.193.10/31
+  encapsulation dot1q 193
+  vrf member vrf_DC-BE
+  ip address 10.1.193.10/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+interface Ethernet1/11.194
+  description vrf_DC-DB DC-BB-1A_to_EXT-01 IP 10.1.194.10/31
+  encapsulation dot1q 194
+  vrf member vrf_DC-DB
+  ip address 10.1.194.10/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+!
+interface Ethernet1/12.192
+  description vrf_DC-FE DC-BB-1A_to_EXT-02 IP 10.1.192.12/31
+  encapsulation dot1q 192
+  vrf member vrf_DC-FE
+  ip address 10.1.192.12/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+interface Ethernet1/12.193
+  description vrf_DC-BE DC-BB-1A_to_EXT-02 IP 10.1.193.12/31
+  encapsulation dot1q 193
+  vrf member vrf_DC-BE
+  ip address 10.1.193.12/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+interface Ethernet1/12.194
+  description vrf_DC-DB DC-BB-1A_to_EXT-02 IP 10.1.194.12/31
+  encapsulation dot1q 194
+  vrf member vrf_DC-DB
+  ip address 10.1.194.12/31
+  ip ospf network point-to-point
+  no ip ospf passive-interface
+  ip router ospf DC area 0.0.0.0
+  ip ospf bfd
+  no shutdown
+!
+router ospf DC
+  vrf vrf_DC-FE
+    router-id 10.1.255.251
+  vrf vrf_DC-BE
+    router-id 10.1.255.251
+  vrf vrf_DC-DB
+    router-id 10.1.255.251
+end
+
+```	
+</details>
+
+#### 0.5. Временный L2-мост (DC-COR-01A, DC-COR-01B, DC-BB-01A, DC-BB-01B)
+<details>
+<summary>Соединить порты Eth1/49 и Eth1/50 между парами COR и BB и выполнить на всех четырех коммутаторах:</summary>
+
+```eos
+
+configure terminal
+!
+interface port-channel49
+  des TEMP_FOR_MIGRATION
+  switchport mode trunk
+  switchport trunk allowed vlan 10,20,30,40,50
+  switchport trunk native vlan 999
+  spanning-tree bpdufilter enable
+  storm-control broadcast level 1.00
+  vpc 49
+!
+interface Ethernet1/49 - 50
+  des TEMP_FOR_MIGRATION
+  switchport
+  switchport mode trunk
+  switchport trunk native vlan 999
+  channel-group 49 mode active
+  no shutdown
+end
+
+```	
+</details>
+
+### Этап 1. Перевод плеча «B» (COR-01B, ACC-01B/02B/03B, BB-01B) в VXLAN EVPN
+
+#### 1.1. DC-COR-01B → Spine-2 (AS 65001)
+<details>
+<summary>КОД</summary>
+
+```eos
+	
+	...
+```	
+</details>
+
+
+
 
 
 ### Этап 2.
@@ -500,7 +840,6 @@ DC2 - 10.2.0.0/16 (reserved)<br>
 
 ## 10. Приложение 3. Вывод команд диагностики в процессе выполнения работы
 
-...
 <details>
 <summary>КОД</summary>
 

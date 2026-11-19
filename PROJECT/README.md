@@ -503,7 +503,9 @@ DC2 - 10.2.0.0/16 (reserved)<br>
 ...
 <details>
 <summary>КОД</summary>
+
 ```eos
+	
 	...
 ```	
 </details>

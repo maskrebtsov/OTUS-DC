@@ -1087,24 +1087,2696 @@ end
 
 #### 1.2. DC-ACC-01B → Leaf-2
 
+<details>
+<summary>Изолируем узел (no feature vpc, отключаем клиентские порты Eth1/1–3, межкоммутаторный канал Po63 и mgmt0), демонтируем старый аплинк Po61, настраиваем VXLAN L2/L3 VNI (10010–10050, 50192–50195), строгую изоляцию VRF (без Route Leaking), Distributed Anycast Gateway (оставляем в состоянии shutdown до Этапа 2), интерфейс nve1 и пиринг iBGP со Spine-2 (10.1.242.2 / 10.1.255.2).</summary>
+```eos
+	
+	configure terminal
+! --- 1. Изоляция узла, отключение vPC и демонтаж старого аплинка Po61 ---
+interface port-channel61, Ethernet1/1 - 3, Ethernet1/61 - 62, port-channel63, mgmt0
+  shutdown
+no feature vpc
+no interface port-channel61
+! --- 2. Активация функционала VXLAN EVPN, BFD и единого Anycast MAC ---
+feature bgp
+feature bfd
+feature vn-segment-vlan-based
+feature nv overlay
+nv overlay evpn
+bfd interval 50 min_rx 50 multiplier 3
+fabric forwarding anycast-gateway-mac 0000.2222.3333
+! --- 3. Маппинг клиентских и транзитных VLAN на VNI ---
+vlan 10
+  vn-segment 10010
+vlan 20
+  vn-segment 10020
+vlan 30
+  vn-segment 10030
+vlan 40
+  vn-segment 10040
+vlan 50
+  vn-segment 10050
+vlan 1192
+  vn-segment 50192
+vlan 1193
+  vn-segment 50193
+vlan 1194
+  vn-segment 50194
+vlan 1195
+  vn-segment 50195
+! --- 4. Настройка изолированных VRF (Route Leaking между VRF запрещён) ---
+vrf context vrf_DC-FE
+  vni 50192
+  rd 10.1.254.12:50192
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50192
+    route-target import 65001:50192 evpn
+    route-target export 65001:50192
+    route-target export 65001:50192 evpn
+vrf context vrf_DC-BE
+  vni 50193
+  rd 10.1.254.12:50193
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50193
+    route-target import 65001:50193 evpn
+    route-target export 65001:50193
+    route-target export 65001:50193 evpn
+vrf context vrf_DC-DB
+  vni 50194
+  rd 10.1.254.12:50194
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50194
+    route-target import 65001:50194 evpn
+    route-target export 65001:50194
+    route-target export 65001:50194 evpn
+vrf context vrf_DC-CORP
+  vni 50195
+  rd 10.1.254.12:50195
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50195
+    route-target import 65001:50195 evpn
+    route-target export 65001:50195
+    route-target export 65001:50195 evpn
+! --- 5. Транзитные SVI для симметричной маршрутизации Symmetric IRB ---
+interface Vlan1192
+  no shutdown
+  vrf member vrf_DC-FE
+  ip forward
+interface Vlan1193
+  no shutdown
+  vrf member vrf_DC-BE
+  ip forward
+interface Vlan1194
+  no shutdown
+  vrf member vrf_DC-DB
+  ip forward
+interface Vlan1195
+  no shutdown
+  vrf member vrf_DC-CORP
+  ip forward
+! --- 6. Клиентские шлюзы Anycast Gateway (оставляем в shutdown до Этапа 2) ---
+interface Vlan10
+  vrf member vrf_DC-FE
+  no ip redirects
+  ip address 10.1.10.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan20
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.20.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan30
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.30.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan40
+  vrf member vrf_DC-DB
+  no ip redirects
+  ip address 10.1.40.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan50
+  vrf member vrf_DC-CORP
+  no ip redirects
+  ip address 10.1.50.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+! --- 7. Loopback-интерфейсы (RID и VTEP) ---
+interface loopback0
+  description LEAF-1B RID IP 10.1.255.12
+  ip address 10.1.255.12/32
+interface loopback1
+  description LEAF-1B VTEP IP 10.1.254.12 (vPC Anycast 10.1.254.241)
+  ip address 10.1.254.12/32
+! --- 8. L3 Underlay-линк к Spine-2 ---
+default interface Ethernet1/62
+interface Ethernet1/62
+  description DC-COR-01B Eth1/2 (Spine-2)
+  no switchport
+  mtu 9216
+  ip address 10.1.242.3/31
+  no shutdown
+! --- 9. Туннельный интерфейс NVE (Ingress Replication и ARP Suppression) ---
+interface nve1
+  no shutdown
+  host-reachability protocol bgp
+  source-interface loopback1
+  source-interface hold-down-time 1
+  member vni 10010
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10020
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10030
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10040
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10050
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 50192 associate-vrf
+  member vni 50193 associate-vrf
+  member vni 50194 associate-vrf
+  member vni 50195 associate-vrf
+! --- 10. Политика анонса локальных подсетей в EVPN Type-5 ---
+route-map rm_DIRECT_TO_EVPN permit 10
+  match interface Vlan10 Vlan20 Vlan30 Vlan40 Vlan50
+! --- 11. Настройка iBGP Underlay/Overlay и EVPN L2 VNI ---
+router bgp 65001
+  router-id 10.1.255.12
+  reconnect-interval 12
+  log-neighbor-changes
+  address-family ipv4 unicast
+    network 10.1.254.12/32
+    network 10.1.255.12/32
+    maximum-paths 10
+    maximum-paths ibgp 10
+  address-family l2vpn evpn
+    maximum-paths 10
+    maximum-paths ibgp 10
+  template peer peer_LEAF_EVPN
+    remote-as 65001
+    update-source loopback0
+    timers 3 9
+    address-family l2vpn evpn
+      send-community
+      send-community extended
+  template peer peer_LEAF_UNDERLAY
+    bfd
+    remote-as 65001
+    timers 3 9
+    address-family ipv4 unicast
+  neighbor 10.1.242.2
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine2_Underlay
+  neighbor 10.1.255.2
+    inherit peer peer_LEAF_EVPN
+    description to_Spine2_EVPN
+  vrf vrf_DC-FE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-BE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-DB
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-CORP
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+evpn
+  vni 10010 l2
+    rd 10.1.254.12:10010
+    route-target import auto
+    route-target import 65001:10010
+    route-target export auto
+    route-target export 65001:10010
+  vni 10020 l2
+    rd 10.1.254.12:10020
+    route-target import auto
+    route-target import 65001:10020
+    route-target export auto
+    route-target export 65001:10020
+  vni 10030 l2
+    rd 10.1.254.12:10030
+    route-target import auto
+    route-target import 65001:10030
+    route-target export auto
+    route-target export 65001:10030
+  vni 10040 l2
+    rd 10.1.254.12:10040
+    route-target import auto
+    route-target import 65001:10040
+    route-target export auto
+    route-target export 65001:10040
+  vni 10050 l2
+    rd 10.1.254.12:10050
+    route-target import auto
+    route-target import 65001:10050
+    route-target export auto
+    route-target export 65001:10050
+end
 
+```	
+</details>
+
+#### 1.3. DC-ACC-02B → Leaf-2B
+
+<details>
+<summary>Изолируем узел (no feature vpc, отключаем клиентский порт Eth1/1, межкоммутаторный канал Po63 и mgmt0), демонтируем старый аплинк Po61, настраиваем VXLAN L2/L3 VNI (10010–10050, 50192–50195), строгую изоляцию VRF (без Route Leaking), Distributed Anycast Gateway (оставляем в состоянии shutdown до Этапа 2), интерфейс nve1 и пиринг iBGP со Spine-2 (10.1.242.6 / 10.1.255.2).</summary>
+
+```eos
+	
+configure terminal
+! --- 1. Изоляция узла, отключение vPC и демонтаж старого аплинка Po61 ---
+interface port-channel61, Ethernet1/1, Ethernet1/61 - 62, port-channel63, mgmt0
+  shutdown
+no feature vpc
+no interface port-channel61
+! --- 2. Активация функционала VXLAN EVPN, BFD и единого Anycast MAC ---
+feature bgp
+feature bfd
+feature vn-segment-vlan-based
+feature nv overlay
+nv overlay evpn
+bfd interval 50 min_rx 50 multiplier 3
+fabric forwarding anycast-gateway-mac 0000.2222.3333
+! --- 3. Маппинг клиентских и транзитных VLAN на VNI ---
+vlan 10
+  vn-segment 10010
+vlan 20
+  vn-segment 10020
+vlan 30
+  vn-segment 10030
+vlan 40
+  vn-segment 10040
+vlan 50
+  vn-segment 10050
+vlan 1192
+  vn-segment 50192
+vlan 1193
+  vn-segment 50193
+vlan 1194
+  vn-segment 50194
+vlan 1195
+  vn-segment 50195
+! --- 4. Настройка изолированных VRF (Route Leaking между VRF запрещён) ---
+vrf context vrf_DC-FE
+  vni 50192
+  rd 10.1.254.14:50192
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50192
+    route-target import 65001:50192 evpn
+    route-target export 65001:50192
+    route-target export 65001:50192 evpn
+vrf context vrf_DC-BE
+  vni 50193
+  rd 10.1.254.14:50193
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50193
+    route-target import 65001:50193 evpn
+    route-target export 65001:50193
+    route-target export 65001:50193 evpn
+vrf context vrf_DC-DB
+  vni 50194
+  rd 10.1.254.14:50194
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50194
+    route-target import 65001:50194 evpn
+    route-target export 65001:50194
+    route-target export 65001:50194 evpn
+vrf context vrf_DC-CORP
+  vni 50195
+  rd 10.1.254.14:50195
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50195
+    route-target import 65001:50195 evpn
+    route-target export 65001:50195
+    route-target export 65001:50195 evpn
+! --- 5. Транзитные SVI для симметричной маршрутизации Symmetric IRB ---
+interface Vlan1192
+  no shutdown
+  vrf member vrf_DC-FE
+  ip forward
+interface Vlan1193
+  no shutdown
+  vrf member vrf_DC-BE
+  ip forward
+interface Vlan1194
+  no shutdown
+  vrf member vrf_DC-DB
+  ip forward
+interface Vlan1195
+  no shutdown
+  vrf member vrf_DC-CORP
+  ip forward
+! --- 6. Клиентские шлюзы Anycast Gateway (оставляем в shutdown до Этапа 2) ---
+interface Vlan10
+  vrf member vrf_DC-FE
+  no ip redirects
+  ip address 10.1.10.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan20
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.20.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan30
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.30.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan40
+  vrf member vrf_DC-DB
+  no ip redirects
+  ip address 10.1.40.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan50
+  vrf member vrf_DC-CORP
+  no ip redirects
+  ip address 10.1.50.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+! --- 7. Loopback-интерфейсы (RID и VTEP) ---
+interface loopback0
+  description LEAF-2B RID IP 10.1.255.14
+  ip address 10.1.255.14/32
+interface loopback1
+  description LEAF-2B VTEP IP 10.1.254.14 (vPC Anycast 10.1.254.242)
+  ip address 10.1.254.14/32
+! --- 8. L3 Underlay-линк к Spine-2 ---
+default interface Ethernet1/62
+interface Ethernet1/62
+  description DC-COR-01B Eth1/4 (Spine-2)
+  no switchport
+  mtu 9216
+  ip address 10.1.242.7/31
+  no shutdown
+! --- 9. Туннельный интерфейс NVE (Ingress Replication и ARP Suppression) ---
+interface nve1
+  no shutdown
+  host-reachability protocol bgp
+  source-interface loopback1
+  source-interface hold-down-time 1
+  member vni 10010
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10020
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10030
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10040
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10050
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 50192 associate-vrf
+  member vni 50193 associate-vrf
+  member vni 50194 associate-vrf
+  member vni 50195 associate-vrf
+! --- 10. Политика анонса локальных подсетей в EVPN Type-5 ---
+route-map rm_DIRECT_TO_EVPN permit 10
+  match interface Vlan10 Vlan20 Vlan30 Vlan40 Vlan50
+! --- 11. Настройка iBGP Underlay/Overlay и EVPN L2 VNI ---
+router bgp 65001
+  router-id 10.1.255.14
+  reconnect-interval 12
+  log-neighbor-changes
+  address-family ipv4 unicast
+    network 10.1.254.14/32
+    network 10.1.255.14/32
+    maximum-paths 10
+    maximum-paths ibgp 10
+  address-family l2vpn evpn
+    maximum-paths 10
+    maximum-paths ibgp 10
+
+  template peer peer_LEAF_EVPN
+    remote-as 65001
+    update-source loopback0
+    timers 3 9
+    address-family l2vpn evpn
+      send-community
+      send-community extended
+  template peer peer_LEAF_UNDERLAY
+    bfd
+    remote-as 65001
+    timers 3 9
+    address-family ipv4 unicast
+  neighbor 10.1.242.6
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine2_Underlay
+  neighbor 10.1.255.2
+    inherit peer peer_LEAF_EVPN
+    description to_Spine2_EVPN
+  vrf vrf_DC-FE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-BE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-DB
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-CORP
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+evpn
+  vni 10010 l2
+    rd 10.1.254.14:10010
+    route-target import auto
+    route-target import 65001:10010
+    route-target export auto
+    route-target export 65001:10010
+  vni 10020 l2
+    rd 10.1.254.14:10020
+    route-target import auto
+    route-target import 65001:10020
+    route-target export auto
+    route-target export 65001:10020
+  vni 10030 l2
+    rd 10.1.254.14:10030
+    route-target import auto
+    route-target import 65001:10030
+    route-target export auto
+    route-target export 65001:10030
+  vni 10040 l2
+    rd 10.1.254.14:10040
+    route-target import auto
+    route-target import 65001:10040
+    route-target export auto
+    route-target export 65001:10040
+  vni 10050 l2
+    rd 10.1.254.14:10050
+    route-target import auto
+    route-target import 65001:10050
+    route-target export auto
+    route-target export 65001:10050
+end
+
+```	
+</details>
+
+#### 1.4. DC-ACC-03B → Leaf-3B
+
+<details>
+<summary>Изолируем узел (no feature vpc, отключаем клиентские порты Eth1/1–2, межкоммутаторный канал Po63 и mgmt0), демонтируем старый аплинк Po61, настраиваем VXLAN L2/L3 VNI (10010–10050, 50192–50195), строгую изоляцию VRF (без Route Leaking), Distributed Anycast Gateway (оставляем в состоянии shutdown до Этапа 2), интерфейс nve1 и пиринг iBGP со Spine-2 (10.1.242.10 / 10.1.255.2). </summary>
+
+```eos
+configure terminal
+! --- 1. Изоляция узла, отключение vPC и демонтаж старого аплинка Po61 ---
+interface port-channel61, Ethernet1/1 - 2, Ethernet1/61 - 62, port-channel63, mgmt0
+  shutdown
+no feature vpc
+no interface port-channel61
+! --- 2. Активация функционала VXLAN EVPN, BFD и единого Anycast MAC ---
+feature bgp
+feature bfd
+feature vn-segment-vlan-based
+feature nv overlay
+nv overlay evpn
+bfd interval 50 min_rx 50 multiplier 3
+fabric forwarding anycast-gateway-mac 0000.2222.3333
+! --- 3. Маппинг клиентских и транзитных VLAN на VNI ---
+vlan 10
+  vn-segment 10010
+vlan 20
+  vn-segment 10020
+vlan 30
+  vn-segment 10030
+vlan 40
+  vn-segment 10040
+vlan 50
+  vn-segment 10050
+vlan 1192
+  vn-segment 50192
+vlan 1193
+  vn-segment 50193
+vlan 1194
+  vn-segment 50194
+vlan 1195
+  vn-segment 50195
+! --- 4. Настройка изолированных VRF (Route Leaking между VRF запрещён) ---
+vrf context vrf_DC-FE
+  vni 50192
+  rd 10.1.254.16:50192
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50192
+    route-target import 65001:50192 evpn
+    route-target export 65001:50192
+    route-target export 65001:50192 evpn
+vrf context vrf_DC-BE
+  vni 50193
+  rd 10.1.254.16:50193
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50193
+    route-target import 65001:50193 evpn
+    route-target export 65001:50193
+    route-target export 65001:50193 evpn
+vrf context vrf_DC-DB
+  vni 50194
+  rd 10.1.254.16:50194
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50194
+    route-target import 65001:50194 evpn
+    route-target export 65001:50194
+    route-target export 65001:50194 evpn
+vrf context vrf_DC-CORP
+  vni 50195
+  rd 10.1.254.16:50195
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50195
+    route-target import 65001:50195 evpn
+    route-target export 65001:50195
+    route-target export 65001:50195 evpn
+! --- 5. Транзитные SVI для симметричной маршрутизации Symmetric IRB ---
+interface Vlan1192
+  no shutdown
+  vrf member vrf_DC-FE
+  ip forward
+interface Vlan1193
+  no shutdown
+  vrf member vrf_DC-BE
+  ip forward
+interface Vlan1194
+  no shutdown
+  vrf member vrf_DC-DB
+  ip forward
+interface Vlan1195
+  no shutdown
+  vrf member vrf_DC-CORP
+  ip forward
+! --- 6. Клиентские шлюзы Anycast Gateway (оставляем в shutdown до Этапа 2) ---
+interface Vlan10
+  vrf member vrf_DC-FE
+  no ip redirects
+  ip address 10.1.10.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan20
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.20.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan30
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.30.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan40
+  vrf member vrf_DC-DB
+  no ip redirects
+  ip address 10.1.40.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan50
+  vrf member vrf_DC-CORP
+  no ip redirects
+  ip address 10.1.50.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+! --- 7. Loopback-интерфейсы (RID и VTEP) ---
+interface loopback0
+  description LEAF-3B RID IP 10.1.255.16
+  ip address 10.1.255.16/32
+interface loopback1
+  description LEAF-3B VTEP IP 10.1.254.16 (vPC Anycast 10.1.254.243)
+  ip address 10.1.254.16/32
+! --- 8. L3 Underlay-линк к Spine-2 ---
+default interface Ethernet1/62
+interface Ethernet1/62
+  description DC-COR-01B Eth1/6 (Spine-2)
+  no switchport
+  mtu 9216
+  ip address 10.1.242.11/31
+  no shutdown
+! --- 9. Туннельный интерфейс NVE (Ingress Replication и ARP Suppression) ---
+interface nve1
+  no shutdown
+  host-reachability protocol bgp
+  source-interface loopback1
+  source-interface hold-down-time 1
+  member vni 10010
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10020
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10030
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10040
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10050
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 50192 associate-vrf
+  member vni 50193 associate-vrf
+  member vni 50194 associate-vrf
+  member vni 50195 associate-vrf
+! --- 10. Политика анонса локальных подсетей в EVPN Type-5 ---
+route-map rm_DIRECT_TO_EVPN permit 10
+  match interface Vlan10 Vlan20 Vlan30 Vlan40 Vlan50
+! --- 11. Настройка iBGP Underlay/Overlay и EVPN L2 VNI ---
+router bgp 65001
+  router-id 10.1.255.16
+  reconnect-interval 12
+  log-neighbor-changes
+  address-family ipv4 unicast
+    network 10.1.254.16/32
+    network 10.1.255.16/32
+    maximum-paths 10
+    maximum-paths ibgp 10
+  address-family l2vpn evpn
+    maximum-paths 10
+    maximum-paths ibgp 10
+   template peer peer_LEAF_EVPN
+    remote-as 65001
+    update-source loopback0
+    timers 3 9
+    address-family l2vpn evpn
+      send-community
+      send-community extended
+  template peer peer_LEAF_UNDERLAY
+    bfd
+    remote-as 65001
+    timers 3 9
+    address-family ipv4 unicast
+  neighbor 10.1.242.10
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine2_Underlay
+  neighbor 10.1.255.2
+    inherit peer peer_LEAF_EVPN
+    description to_Spine2_EVPN
+  vrf vrf_DC-FE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-BE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-DB
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-CORP
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+evpn
+  vni 10010 l2
+    rd 10.1.254.16:10010
+    route-target import auto
+    route-target import 65001:10010
+    route-target export auto
+    route-target export 65001:10010
+  vni 10020 l2
+    rd 10.1.254.16:10020
+    route-target import auto
+    route-target import 65001:10020
+    route-target export auto
+    route-target export 65001:10020
+  vni 10030 l2
+    rd 10.1.254.16:10030
+    route-target import auto
+    route-target import 65001:10030
+    route-target export auto
+    route-target export 65001:10030
+  vni 10040 l2
+    rd 10.1.254.16:10040
+    route-target import auto
+    route-target import 65001:10040
+    route-target export auto
+    route-target export 65001:10040
+  vni 10050 l2
+    rd 10.1.254.16:10050
+    route-target import auto
+    route-target import 65001:10050
+    route-target export auto
+    route-target export 65001:10050
+end
+
+```	
+</details>
+
+#### 1.5. 
+<details>
+<summary>Переводим DC-BB-01B в роль Border Leaf-2 (Lo0 10.1.255.252/32, Lo1 10.1.254.252/32), отключаем feature vpc на переходный период, поднимаем Underlay-линк Eth1/52 к Spine-2 и настраиваем защищённую взаимную редистрибуцию конкретных маршрутов OSPF ↔ BGP 65001 строго внутри каждого из четырёх VRF (без утечки между VRF). Временный L2-мост Po49 и межблочный OSPF-канал Po47.192–195 сохраняются до завершения Этапа 2.</summary>
+
+```eos
+	
+configure terminal
+! --- 1. Изоляция vPC и демонтаж старых стыков с ядром ---
+interface port-channel63, mgmt0
+  shutdown
+no feature vpc
+no interface Ethernet1/51.195
+no interface Ethernet1/52.195
+interface Ethernet1/51
+  shutdown
+default interface Ethernet1/52
+! --- 2. Включение функционала VXLAN EVPN, BFD и единого Anycast MAC ---
+feature bgp
+feature bfd
+feature vn-segment-vlan-based
+feature nv overlay
+nv overlay evpn
+bfd interval 50 min_rx 50 multiplier 3
+fabric forwarding anycast-gateway-mac 0000.2222.3333
+! --- 3. Маппинг клиентских и транзитных VLAN на VNI ---
+vlan 10
+  vn-segment 10010
+vlan 20
+  vn-segment 10020
+vlan 30
+  vn-segment 10030
+vlan 40
+  vn-segment 10040
+vlan 50
+  vn-segment 10050
+vlan 1192
+  vn-segment 50192
+vlan 1193
+  vn-segment 50193
+vlan 1194
+  vn-segment 50194
+vlan 1195
+  vn-segment 50195
+! --- 4. Настройка изолированных VRF (Route Leaking между VRF запрещён) ---
+vrf context vrf_DC-FE
+  vni 50192
+  rd 10.1.254.252:50192
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50192
+    route-target import 65001:50192 evpn
+    route-target export 65001:50192
+    route-target export 65001:50192 evpn
+vrf context vrf_DC-BE
+  vni 50193
+  rd 10.1.254.252:50193
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50193
+    route-target import 65001:50193 evpn
+    route-target export 65001:50193
+    route-target export 65001:50193 evpn
+vrf context vrf_DC-DB
+  vni 50194
+  rd 10.1.254.252:50194
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50194
+    route-target import 65001:50194 evpn
+    route-target export 65001:50194
+    route-target export 65001:50194 evpn
+vrf context vrf_DC-CORP
+  vni 50195
+  rd 10.1.254.252:50195
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50195
+    route-target import 65001:50195 evpn
+    route-target export 65001:50195
+    route-target export 65001:50195 evpn
+! --- 5. Транзитные SVI для симметричной маршрутизации Symmetric IRB ---
+interface Vlan1192
+  no shutdown
+  vrf member vrf_DC-FE
+  ip forward
+interface Vlan1193
+  no shutdown
+  vrf member vrf_DC-BE
+  ip forward
+interface Vlan1194
+  no shutdown
+  vrf member vrf_DC-DB
+  ip forward
+interface Vlan1195
+  no shutdown
+  vrf member vrf_DC-CORP
+  ip forward
+! --- 6. Клиентские шлюзы Anycast Gateway (оставляем в shutdown до Этапа 2) ---
+interface Vlan10
+  vrf member vrf_DC-FE
+  no ip redirects
+  ip address 10.1.10.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan20
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.20.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan30
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.30.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan40
+  vrf member vrf_DC-DB
+  no ip redirects
+  ip address 10.1.40.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+interface Vlan50
+  vrf member vrf_DC-CORP
+  no ip redirects
+  ip address 10.1.50.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  shutdown
+! --- 7. Loopback0/1 и Underlay-линк к Spine-2 ---
+interface loopback0
+  description BL-2 RID IP 10.1.255.252
+  ip address 10.1.255.252/32
+interface loopback1
+  description BL-2 VTEP IP 10.1.254.252 (vPC Anycast 10.1.254.250)
+  ip address 10.1.254.252/32
+interface Ethernet1/52
+  description DC-COR-01B Eth1/52 (Spine-2)
+  no switchport
+  mtu 9216
+  ip address 10.1.251.67/31
+  no shutdown
+! --- 8. Туннельный интерфейс NVE (Ingress Replication и ARP Suppression) ---
+interface nve1
+  no shutdown
+  host-reachability protocol bgp
+  source-interface loopback1
+  source-interface hold-down-time 1
+  member vni 10010
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10020
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10030
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10040
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10050
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 50192 associate-vrf
+  member vni 50193 associate-vrf
+  member vni 50194 associate-vrf
+  member vni 50195 associate-vrf
+! --- 9. Префикс-листы фильтрации маршрутов между OSPF и BGP EVPN ---
+ip prefix-list pl_FE_TO_OSPF seq 10 permit 10.1.10.0/24 le 32
+ip prefix-list pl_BE_TO_OSPF seq 10 permit 10.1.20.0/24 le 32
+ip prefix-list pl_BE_TO_OSPF seq 20 permit 10.1.30.0/24 le 32
+ip prefix-list pl_DB_TO_OSPF seq 10 permit 10.1.40.0/24 le 32
+ip prefix-list pl_CORP_TO_OSPF seq 10 permit 10.1.50.0/24 le 32
+
+ip prefix-list pl_EXT_TO_FE seq 10 permit 10.1.20.0/24
+ip prefix-list pl_EXT_TO_FE seq 20 permit 10.1.30.0/24
+ip prefix-list pl_EXT_TO_FE seq 30 permit 10.1.40.0/24
+ip prefix-list pl_EXT_TO_FE seq 40 permit 10.1.50.0/24
+ip prefix-list pl_EXT_TO_FE seq 50 permit 192.168.0.0/16 le 32
+
+ip prefix-list pl_EXT_TO_BE seq 10 permit 10.1.10.0/24
+ip prefix-list pl_EXT_TO_BE seq 20 permit 10.1.40.0/24
+ip prefix-list pl_EXT_TO_BE seq 30 permit 10.1.50.0/24
+ip prefix-list pl_EXT_TO_BE seq 40 permit 192.168.0.0/16 le 32
+
+ip prefix-list pl_EXT_TO_DB seq 10 permit 10.1.10.0/24
+ip prefix-list pl_EXT_TO_DB seq 20 permit 10.1.20.0/24
+ip prefix-list pl_EXT_TO_DB seq 30 permit 10.1.30.0/24
+ip prefix-list pl_EXT_TO_DB seq 40 permit 10.1.50.0/24
+ip prefix-list pl_EXT_TO_DB seq 50 permit 192.168.0.0/16 le 32
+
+ip prefix-list pl_EXT_TO_CORP seq 10 permit 10.1.10.0/24
+ip prefix-list pl_EXT_TO_CORP seq 20 permit 10.1.20.0/24
+ip prefix-list pl_EXT_TO_CORP seq 30 permit 10.1.30.0/24
+ip prefix-list pl_EXT_TO_CORP seq 40 permit 10.1.40.0/24
+ip prefix-list pl_EXT_TO_CORP seq 50 permit 192.168.0.0/16 le 32
+
+! --- 10. Маршрутные карты взаимной редистрибуции OSPF и BGP EVPN ---
+route-map rm_FE_BGP_TO_OSPF permit 10
+  match ip address prefix-list pl_FE_TO_OSPF
+route-map rm_BE_BGP_TO_OSPF permit 10
+  match ip address prefix-list pl_BE_TO_OSPF
+route-map rm_DB_BGP_TO_OSPF permit 10
+  match ip address prefix-list pl_DB_TO_OSPF
+route-map rm_CORP_BGP_TO_OSPF permit 10
+  match ip address prefix-list pl_CORP_TO_OSPF
+
+route-map rm_OSPF_TO_BGP_FE permit 10
+  match ip address prefix-list pl_EXT_TO_FE
+route-map rm_OSPF_TO_BGP_BE permit 10
+  match ip address prefix-list pl_EXT_TO_BE
+route-map rm_OSPF_TO_BGP_DB permit 10
+  match ip address prefix-list pl_EXT_TO_DB
+route-map rm_OSPF_TO_BGP_CORP permit 10
+  match ip address prefix-list pl_EXT_TO_CORP
+! --- 11. Настройка редистрибуции в OSPF по каждому VRF ---
+router ospf DC
+  vrf vrf_DC-FE
+    redistribute direct route-map rm_FE_BGP_TO_OSPF
+    redistribute bgp 65001 route-map rm_FE_BGP_TO_OSPF
+  vrf vrf_DC-BE
+    redistribute direct route-map rm_BE_BGP_TO_OSPF
+    redistribute bgp 65001 route-map rm_BE_BGP_TO_OSPF
+  vrf vrf_DC-DB
+    redistribute direct route-map rm_DB_BGP_TO_OSPF
+    redistribute bgp 65001 route-map rm_DB_BGP_TO_OSPF
+  vrf vrf_DC-CORP
+    redistribute direct route-map rm_CORP_BGP_TO_OSPF
+    redistribute bgp 65001 route-map rm_CORP_BGP_TO_OSPF
+! --- 12. Настройка iBGP Underlay/Overlay и редистрибуции OSPF в EVPN Type-5 ---
+router bgp 65001
+  router-id 10.1.255.252
+  reconnect-interval 12
+  log-neighbor-changes
+  address-family ipv4 unicast
+    network 10.1.254.252/32
+    network 10.1.255.252/32
+    maximum-paths 10
+    maximum-paths ibgp 10
+  address-family l2vpn evpn
+    maximum-paths 10
+    maximum-paths ibgp 10
+  template peer peer_LEAF_EVPN
+    remote-as 65001
+    update-source loopback0
+    timers 3 9
+    address-family l2vpn evpn
+      send-community
+      send-community extended
+  template peer peer_LEAF_UNDERLAY
+    remote-as 65001
+    timers 3 9
+    address-family ipv4 unicast
+  neighbor 10.1.251.66
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine2_Underlay
+  neighbor 10.1.255.2
+    inherit peer peer_LEAF_EVPN
+    description to_Spine2_EVPN
+  vrf vrf_DC-FE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute ospf DC route-map rm_OSPF_TO_BGP_FE
+  vrf vrf_DC-BE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute ospf DC route-map rm_OSPF_TO_BGP_BE
+  vrf vrf_DC-DB
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute ospf DC route-map rm_OSPF_TO_BGP_DB
+  vrf vrf_DC-CORP
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute ospf DC route-map rm_OSPF_TO_BGP_CORP
+! --- 13. Настройка L2 VNI в контексте EVPN ---
+evpn
+  vni 10010 l2
+    rd 10.1.254.252:10010
+    route-target import auto
+    route-target import 65001:10010
+    route-target export auto
+    route-target export 65001:10010
+  vni 10020 l2
+    rd 10.1.254.252:10020
+    route-target import auto
+    route-target import 65001:10020
+    route-target export auto
+    route-target export 65001:10020
+  vni 10030 l2
+    rd 10.1.254.252:10030
+    route-target import auto
+    route-target import 65001:10030
+    route-target export auto
+    route-target export 65001:10030
+  vni 10040 l2
+    rd 10.1.254.252:10040
+    route-target import auto
+    route-target import 65001:10040
+    route-target export auto
+    route-target export 65001:10040
+  vni 10050 l2
+    rd 10.1.254.252:10050
+    route-target import auto
+    route-target import 65001:10050
+    route-target export auto
+    route-target export 65001:10050
+end
+
+```	
+</details>
 
 ### Этап 2.
+**Цель:** Перенести маршрутизацию шлюза по умолчанию внутрь фабрики VXLAN EVPN и переключить клиентские каналы LACP серверов на плечо «B» с минимальной задержкой сходимости (< 300 мс).
+
+#### 2.1. Перевод клиентских портов доступа плеча «A» в состояние shutdown
+<details>
+<summary>Весь трафик серверов полностью останавливается.</summary>
+
+```eos
+! На DC-ACC-01A:
+configure terminal
+interface Ethernet1/1 - 3
+  shutdown
+end
+! На DC-ACC-02A:
+configure terminal
+interface Ethernet1/1
+  shutdown
+end
+! На DC-ACC-03A:
+configure terminal
+interface Ethernet1/1 - 2
+  shutdown
+end
+```	
+</details>
+
+#### 2.2. Отключение HSRP и старых внешних стыков с МСЭ на ядре плеча «A» (DC-COR-01A)
+<details>
+<summary>Применяем набор команд</summary>
+```eos
+! --- На DC-COR-01A ---
+configure terminal
+interface Vlan10, Vlan20, Vlan30, Vlan40, Vlan50
+  shutdown
+interface Ethernet1/59.192, Ethernet1/59.193, Ethernet1/59.194, Ethernet1/59.195
+  shutdown
+interface Ethernet1/60.192, Ethernet1/60.193, Ethernet1/60.194, Ethernet1/60.195
+  shutdown
+end
+```	
+</details>
+
+#### 2.3. Активация Distributed Anycast Gateway на узлах плеча «B»
+<details>
+<summary>Применяем набор команд</summary>
+```eos
+! --- Выполнить на DC-ACC-01B, DC-ACC-02B, DC-ACC-03B и DC-BB-01B ---
+configure terminal
+interface Vlan10, Vlan20, Vlan30, Vlan40, Vlan50
+  no shutdown
+end
+```	
+</details>
+
+#### 2.4. Включение клиентских портов доступа на плече «B» (без влияния на трафик)
+<details>
+<summary>Применяем набор команд</summary>
+```eos
+! На DC-ACC-01B:
+configure terminal
+interface Ethernet1/1 - 3
+  no shutdown
+end
+! На DC-ACC-02B:
+configure terminal
+interface Ethernet1/1
+  no shutdown
+end
+! На DC-ACC-03B:
+configure terminal
+interface Ethernet1/1 - 2
+  no shutdown
+end
+```	
+</details>
+
 ### Этап 3.
+**Цель:** Пройдена контролируемая точка невозврата (100% трафика и все 4 зоны безопасности обслуживаются плечом «B»). Демонтируем временные переходные мосты (Po49 и Po47.192–195), переводим узлы левого плеча в роли Spine-1, Leaf-1A/2A/3A и Border Leaf-1, подключаем вторые аплинки на плече «B» и воссоединяем домены vPC VXLAN.
+
+#### 3.1. DC-COR-01A → Spine-1 (AS 65001)
+<details>
+<summary>Очищаем наследие классического ядра на DC-COR-01A (удаляем feature vpc, feature hsrp, feature interface-vlan, старые клиентские VLAN, SVI и межблочные транки) и переводим коммутатор в роль чистого IP-транзита (Spine-1, BGP Route Reflector 10.1.255.1)</summary>
+```eos
+configure terminal
+! --- 1. Демонтаж классической архитектуры ядра ---
+no feature vpc
+no feature hsrp
+no router ospf DC
+no interface Vlan10, Vlan20, Vlan30, Vlan40, Vlan50
+no interface port-channel1, port-channel3, port-channel5, port-channel49
+no interface port-channel61.192, port-channel61.193, port-channel61.194, port-channel61.195
+no interface port-channel61, port-channel63
+no interface loopback192, loopback193, loopback194, loopback195
+no vrf context vrf_DC-FE
+no vrf context vrf_DC-BE
+no vrf context vrf_DC-DB
+no vrf context vrf_DC-CORP
+! --- 2. Активация функционала BGP и EVPN ---
+feature bgp
+feature nv overlay
+nv overlay evpn
+system jumbomtu 9216
+interface loopback0
+  description SPINE-1 RID IP 10.1.255.1
+  ip address 10.1.255.1/32
+! --- 3. Настройка неблокируемых L3 P2P-линков Underlay (MTU 9216) ---
+default interface Ethernet1/1 - 6, Ethernet1/49 - 52, Ethernet1/59 - 64
+interface Ethernet1/1
+  description DC-ACC-01A Eth1/61 (Leaf-1A)
+  no switchport
+  mtu 9216
+  ip address 10.1.241.0/31
+  no shutdown
+interface Ethernet1/2
+  description DC-ACC-01B Eth1/61 (Leaf-1B)
+  no switchport
+  mtu 9216
+  ip address 10.1.241.2/31
+  no shutdown
+interface Ethernet1/3
+  description DC-ACC-02A Eth1/61 (Leaf-2A)
+  no switchport
+  mtu 9216
+  ip address 10.1.241.4/31
+  no shutdown
+interface Ethernet1/4
+  description DC-ACC-02B Eth1/61 (Leaf-2B)
+  no switchport
+  mtu 9216
+  ip address 10.1.241.6/31
+  no shutdown
+interface Ethernet1/5
+  description DC-ACC-03A Eth1/61 (Leaf-3A)
+  no switchport
+  mtu 9216
+  ip address 10.1.241.8/31
+  no shutdown
+interface Ethernet1/6
+  description DC-ACC-03B Eth1/61 (Leaf-3B)
+  no switchport
+  mtu 9216
+  ip address 10.1.241.10/31
+  no shutdown
+interface Ethernet1/51
+  description DC-BB-01A Eth1/51 (BL-1)
+  no switchport
+  mtu 9216
+  ip address 10.1.251.0/31
+  no shutdown
+interface Ethernet1/52
+  description DC-BB-01B Eth1/51 (BL-2)
+  no switchport
+  mtu 9216
+  ip address 10.1.251.2/31
+  no shutdown
+! --- 4. Настройка iBGP Route Reflector для Underlay и Overlay ---
+router bgp 65001
+  router-id 10.1.255.1
+  reconnect-interval 12
+  log-neighbor-changes
+  address-family ipv4 unicast
+    network 10.1.255.1/32
+    maximum-paths 10
+    maximum-paths ibgp 10
+  address-family l2vpn evpn
+    maximum-paths 10
+    maximum-paths ibgp 10
+  template peer peer_SPINE_UNDERLAY
+    remote-as 65001
+    timers 3 9
+    address-family ipv4 unicast
+      route-reflector-client
+      next-hop-self all
+  template peer peer_SPINE_EVPN
+    remote-as 65001
+    update-source loopback0
+    timers 3 9
+    address-family l2vpn evpn
+      send-community
+      send-community extended
+      route-reflector-client
+  neighbor 10.1.241.0/24
+    inherit peer peer_SPINE_UNDERLAY
+    description to_Leafs_Underlay
+  neighbor 10.1.251.0/26
+    inherit peer peer_SPINE_UNDERLAY
+    description to_BorderLeafs_Underlay
+  neighbor 10.1.255.0/24
+    inherit peer peer_SPINE_EVPN
+    description to_VTEPs_EVPN
+end
+```	
+</details>
+
+#### 3.2. DC-ACC-01A → Leaf-1A
+<details>
+<summary>Применяем набор команд</summary>
+```eos
+configure terminal
+! --- 1. Очистка старого аплинка Po61 ---
+no interface port-channel61
+! --- 2. Включение функций VXLAN EVPN и единого Anycast MAC ---
+feature bgp
+feature vn-segment-vlan-based
+feature nv overlay
+nv overlay evpn
+fabric forwarding anycast-gateway-mac 0000.2222.3333
+! --- 3. Маппинг клиентских и транзитных VLAN на VNI ---
+vlan 10
+  vn-segment 10010
+vlan 20
+  vn-segment 10020
+vlan 30
+  vn-segment 10030
+vlan 40
+  vn-segment 10040
+vlan 50
+  vn-segment 10050
+vlan 1192
+  vn-segment 50192
+vlan 1193
+  vn-segment 50193
+vlan 1194
+  vn-segment 50194
+vlan 1195
+  vn-segment 50195
+! --- 4. Настройка изолированных VRF (Route Leaking между VRF запрещён) ---
+vrf context vrf_DC-FE
+  vni 50192
+  rd 10.1.254.11:50192
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50192
+    route-target import 65001:50192 evpn
+    route-target export 65001:50192
+    route-target export 65001:50192 evpn
+vrf context vrf_DC-BE
+  vni 50193
+  rd 10.1.254.11:50193
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50193
+    route-target import 65001:50193 evpn
+    route-target export 65001:50193
+    route-target export 65001:50193 evpn
+vrf context vrf_DC-DB
+  vni 50194
+  rd 10.1.254.11:50194
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50194
+    route-target import 65001:50194 evpn
+    route-target export 65001:50194
+    route-target export 65001:50194 evpn
+vrf context vrf_DC-CORP
+  vni 50195
+  rd 10.1.254.11:50195
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50195
+    route-target import 65001:50195 evpn
+    route-target export 65001:50195
+    route-target export 65001:50195 evpn
+! --- 5. Транзитные SVI для Symmetric IRB и клиентские Anycast Gateway ---
+interface Vlan1192
+  no shutdown
+  vrf member vrf_DC-FE
+  ip forward
+interface Vlan1193
+  no shutdown
+  vrf member vrf_DC-BE
+  ip forward
+interface Vlan1194
+  no shutdown
+  vrf member vrf_DC-DB
+  ip forward
+interface Vlan1195
+  no shutdown
+  vrf member vrf_DC-CORP
+  ip forward
+interface Vlan10
+  vrf member vrf_DC-FE
+  no ip redirects
+  ip address 10.1.10.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan20
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.20.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan30
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.30.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan40
+  vrf member vrf_DC-DB
+  no ip redirects
+  ip address 10.1.40.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan50
+  vrf member vrf_DC-CORP
+  no ip redirects
+  ip address 10.1.50.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+! --- 6. Loopback0/1 (Secondary IP 10.1.254.241/32) и L3 Underlay-линки к Spine-1 и Spine-2 ---
+interface loopback0
+  description LEAF-1A RID IP 10.1.255.11
+  ip address 10.1.255.11/32
+interface loopback1
+  description LEAF-1A VTEP IP 10.1.254.11 (vPC Anycast 10.1.254.241)
+  ip address 10.1.254.11/32
+  ip address 10.1.254.241/32 secondary
+  no sh
+default interface Ethernet1/61 - 62
+interface Ethernet1/61
+  description DC-COR-01A Eth1/1 (Spine-1)
+  no switchport
+  mtu 9216
+  ip address 10.1.241.1/31
+  no shutdown
+interface Ethernet1/62
+  description DC-COR-01B Eth1/1 (Spine-2)
+  no switchport
+  mtu 9216
+  ip address 10.1.242.1/31
+  no shutdown
+! --- 7. Туннельный интерфейс NVE (Ingress Replication и ARP Suppression) ---
+interface nve1
+  no shutdown
+  host-reachability protocol bgp
+  advertise virtual-rmac
+  source-interface loopback1
+  source-interface hold-down-time 1
+  member vni 10010
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10020
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10030
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10040
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10050
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 50192 associate-vrf
+  member vni 50193 associate-vrf
+  member vni 50194 associate-vrf
+  member vni 50195 associate-vrf
+! --- 8. Политика анонса локальных подсетей и iBGP Underlay/Overlay ---
+route-map rm_DIRECT_TO_EVPN permit 10
+  match interface Vlan10 Vlan20 Vlan30 Vlan40 Vlan50
+router bgp 65001
+  router-id 10.1.255.11
+  reconnect-interval 12
+  log-neighbor-changes
+  address-family ipv4 unicast
+    network 10.1.254.11/32
+    network 10.1.254.241/32
+    network 10.1.255.11/32
+    maximum-paths 10
+    maximum-paths ibgp 10
+  address-family l2vpn evpn
+    maximum-paths 10
+    maximum-paths ibgp 10
+    advertise-pip
+  template peer peer_LEAF_EVPN
+    remote-as 65001
+    update-source loopback0
+    timers 3 9
+    address-family l2vpn evpn
+      send-community
+      send-community extended
+  template peer peer_LEAF_UNDERLAY
+    remote-as 65001
+    timers 3 9
+    address-family ipv4 unicast
+  neighbor 10.1.241.0
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine1_Underlay
+  neighbor 10.1.242.0
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine2_Underlay
+  neighbor 10.1.255.1
+    inherit peer peer_LEAF_EVPN
+    description to_Spine1_EVPN
+  neighbor 10.1.255.2
+    inherit peer peer_LEAF_EVPN
+    description to_Spine2_EVPN
+  vrf vrf_DC-FE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-BE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-DB
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-CORP
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+evpn
+  vni 10010 l2
+    rd 10.1.254.11:10010
+    route-target import auto
+    route-target import 65001:10010
+    route-target export auto
+    route-target export 65001:10010
+  vni 10020 l2
+    rd 10.1.254.11:10020
+    route-target import auto
+    route-target import 65001:10020
+    route-target export auto
+    route-target export 65001:10020
+  vni 10030 l2
+    rd 10.1.254.11:10030
+    route-target import auto
+    route-target import 65001:10030
+    route-target export auto
+    route-target export 65001:10030
+  vni 10040 l2
+    rd 10.1.254.11:10040
+    route-target import auto
+    route-target import 65001:10040
+    route-target export auto
+    route-target export 65001:10040
+  vni 10050 l2
+    rd 10.1.254.11:10050
+    route-target import auto
+    route-target import 65001:10050
+    route-target export auto
+    route-target export 65001:10050
+end
+```	
+</details>
+
+#### 3.3. DC-ACC-02A → Leaf-2A
+<details>
+<summary>Аналогично п. 3.2 (DC-ACC-01A) со своими индивидуальными параметрами:</summary>
+```eos
+configure terminal
+no interface port-channel61
+feature bgp
+feature vn-segment-vlan-based
+feature nv overlay
+nv overlay evpn
+fabric forwarding anycast-gateway-mac 0000.2222.3333
+vlan 10
+  vn-segment 10010
+vlan 20
+  vn-segment 10020
+vlan 30
+  vn-segment 10030
+vlan 40
+  vn-segment 10040
+vlan 50
+  vn-segment 10050
+vlan 1192
+  vn-segment 50192
+vlan 1193
+  vn-segment 50193
+vlan 1194
+  vn-segment 50194
+vlan 1195
+  vn-segment 50195
+vrf context vrf_DC-FE
+  vni 50192
+  rd 10.1.254.13:50192
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50192
+    route-target import 65001:50192 evpn
+    route-target export 65001:50192
+    route-target export 65001:50192 evpn
+vrf context vrf_DC-BE
+  vni 50193
+  rd 10.1.254.13:50193
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50193
+    route-target import 65001:50193 evpn
+    route-target export 65001:50193
+    route-target export 65001:50193 evpn
+vrf context vrf_DC-DB
+  vni 50194
+  rd 10.1.254.13:50194
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50194
+    route-target import 65001:50194 evpn
+    route-target export 65001:50194
+    route-target export 65001:50194 evpn
+vrf context vrf_DC-CORP
+  vni 50195
+  rd 10.1.254.13:50195
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50195
+    route-target import 65001:50195 evpn
+    route-target export 65001:50195
+    route-target export 65001:50195 evpn
+interface Vlan1192
+  no shutdown
+  vrf member vrf_DC-FE
+  ip forward
+interface Vlan1193
+  no shutdown
+  vrf member vrf_DC-BE
+  ip forward
+interface Vlan1194
+  no shutdown
+  vrf member vrf_DC-DB
+  ip forward
+interface Vlan1195
+  no shutdown
+  vrf member vrf_DC-CORP
+  ip forward
+interface Vlan10
+  vrf member vrf_DC-FE
+  no ip redirects
+  ip address 10.1.10.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan20
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.20.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan30
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.30.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan40
+  vrf member vrf_DC-DB
+  no ip redirects
+  ip address 10.1.40.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan50
+  vrf member vrf_DC-CORP
+  no ip redirects
+  ip address 10.1.50.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface loopback0
+  description LEAF-2A RID IP 10.1.255.13
+  ip address 10.1.255.13/32
+interface loopback1
+  description LEAF-2A VTEP IP 10.1.254.13 (vPC Anycast 10.1.254.242)
+  ip address 10.1.254.13/32
+  ip address 10.1.254.242/32 secondary
+default interface Ethernet1/61 - 62
+interface Ethernet1/61
+  description DC-COR-01A Eth1/3 (Spine-1)
+  no switchport
+  mtu 9216
+  ip address 10.1.241.5/31
+  no shutdown
+interface Ethernet1/62
+  description DC-COR-01B Eth1/3 (Spine-2)
+  no switchport
+  mtu 9216
+  ip address 10.1.242.5/31
+  no shutdown
+interface nve1
+  no shutdown
+  host-reachability protocol bgp
+  advertise virtual-rmac
+  source-interface loopback1
+  source-interface hold-down-time 1
+  member vni 10010
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10020
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10030
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10040
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10050
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 50192 associate-vrf
+  member vni 50193 associate-vrf
+  member vni 50194 associate-vrf
+  member vni 50195 associate-vrf
+route-map rm_DIRECT_TO_EVPN permit 10
+  match interface Vlan10 Vlan20 Vlan30 Vlan40 Vlan50
+router bgp 65001
+  router-id 10.1.255.13
+  reconnect-interval 12
+  log-neighbor-changes
+  address-family ipv4 unicast
+    network 10.1.254.13/32
+    network 10.1.254.242/32
+    network 10.1.255.13/32
+    maximum-paths 10
+    maximum-paths ibgp 10
+  address-family l2vpn evpn
+    maximum-paths 10
+    maximum-paths ibgp 10
+    advertise-pip
+  template peer peer_LEAF_EVPN
+    remote-as 65001
+    update-source loopback0
+    timers 3 9
+    address-family l2vpn evpn
+      send-community
+      send-community extended
+  template peer peer_LEAF_UNDERLAY
+    remote-as 65001
+    timers 3 9
+    address-family ipv4 unicast
+  neighbor 10.1.241.4
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine1_Underlay
+  neighbor 10.1.242.4
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine2_Underlay
+  neighbor 10.1.255.1
+    inherit peer peer_LEAF_EVPN
+    description to_Spine1_EVPN
+  neighbor 10.1.255.2
+    inherit peer peer_LEAF_EVPN
+    description to_Spine2_EVPN
+  vrf vrf_DC-FE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-BE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-DB
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-CORP
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+evpn
+  vni 10010 l2
+    rd 10.1.254.13:10010
+    route-target import auto
+    route-target import 65001:10010
+    route-target export auto
+    route-target export 65001:10010
+  vni 10020 l2
+    rd 10.1.254.13:10020
+    route-target import auto
+    route-target import 65001:10020
+    route-target export auto
+    route-target export 65001:10020
+  vni 10030 l2
+    rd 10.1.254.13:10030
+    route-target import auto
+    route-target import 65001:10030
+    route-target export auto
+    route-target export 65001:10030
+  vni 10040 l2
+    rd 10.1.254.13:10040
+    route-target import auto
+    route-target import 65001:10040
+    route-target export auto
+    route-target export 65001:10040
+  vni 10050 l2
+    rd 10.1.254.13:10050
+    route-target import auto
+    route-target import 65001:10050
+    route-target export auto
+    route-target export 65001:10050
+end
+```	
+</details>
+
+#### 3.4. DC-ACC-03A → Leaf-3A
+<details>
+<summary>Аналогично п. 3.2 (DC-ACC-01A) со своими индивидуальными параметрами</summary>
+```eos
+configure terminal
+no interface port-channel61
+feature bgp
+feature vn-segment-vlan-based
+feature nv overlay
+nv overlay evpn
+fabric forwarding anycast-gateway-mac 0000.2222.3333
+vlan 10
+  vn-segment 10010
+vlan 20
+  vn-segment 10020
+vlan 30
+  vn-segment 10030
+vlan 40
+  vn-segment 10040
+vlan 50
+  vn-segment 10050
+vlan 1192
+  vn-segment 50192
+vlan 1193
+  vn-segment 50193
+vlan 1194
+  vn-segment 50194
+vlan 1195
+  vn-segment 50195
+vrf context vrf_DC-FE
+  vni 50192
+  rd 10.1.254.15:50192
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50192
+    route-target import 65001:50192 evpn
+    route-target export 65001:50192
+    route-target export 65001:50192 evpn
+vrf context vrf_DC-BE
+  vni 50193
+  rd 10.1.254.15:50193
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50193
+    route-target import 65001:50193 evpn
+    route-target export 65001:50193
+    route-target export 65001:50193 evpn
+vrf context vrf_DC-DB
+  vni 50194
+  rd 10.1.254.15:50194
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50194
+    route-target import 65001:50194 evpn
+    route-target export 65001:50194
+    route-target export 65001:50194 evpn
+vrf context vrf_DC-CORP
+  vni 50195
+  rd 10.1.254.15:50195
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50195
+    route-target import 65001:50195 evpn
+    route-target export 65001:50195
+    route-target export 65001:50195 evpn
+interface Vlan1192
+  no shutdown
+  vrf member vrf_DC-FE
+  ip forward
+interface Vlan1193
+  no shutdown
+  vrf member vrf_DC-BE
+  ip forward
+interface Vlan1194
+  no shutdown
+  vrf member vrf_DC-DB
+  ip forward
+interface Vlan1195
+  no shutdown
+  vrf member vrf_DC-CORP
+  ip forward
+interface Vlan10
+  vrf member vrf_DC-FE
+  no ip redirects
+  ip address 10.1.10.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan20
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.20.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan30
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.30.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan40
+  vrf member vrf_DC-DB
+  no ip redirects
+  ip address 10.1.40.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan50
+  vrf member vrf_DC-CORP
+  no ip redirects
+  ip address 10.1.50.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface loopback0
+  description LEAF-3A RID IP 10.1.255.15
+  ip address 10.1.255.15/32
+interface loopback1
+  description LEAF-3A VTEP IP 10.1.254.15 (vPC Anycast 10.1.254.243)
+  ip address 10.1.254.15/32
+  ip address 10.1.254.243/32 secondary
+default interface Ethernet1/61 - 62
+interface Ethernet1/61
+  description DC-COR-01A Eth1/5 (Spine-1)
+  no switchport
+  mtu 9216
+  ip address 10.1.241.9/31
+  no shutdown
+interface Ethernet1/62
+  description DC-COR-01B Eth1/5 (Spine-2)
+  no switchport
+  mtu 9216
+  ip address 10.1.242.9/31
+  no shutdown
+interface nve1
+  no shutdown
+  host-reachability protocol bgp
+  advertise virtual-rmac
+  source-interface loopback1
+  source-interface hold-down-time 1
+  member vni 10010
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10020
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10030
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10040
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10050
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 50192 associate-vrf
+  member vni 50193 associate-vrf
+  member vni 50194 associate-vrf
+  member vni 50195 associate-vrf
+route-map rm_DIRECT_TO_EVPN permit 10
+  match interface Vlan10 Vlan20 Vlan30 Vlan40 Vlan50
+router bgp 65001
+  router-id 10.1.255.15
+  reconnect-interval 12
+  log-neighbor-changes
+  address-family ipv4 unicast
+    network 10.1.254.15/32
+    network 10.1.254.243/32
+    network 10.1.255.15/32
+    maximum-paths 10
+    maximum-paths ibgp 10
+  address-family l2vpn evpn
+    maximum-paths 10
+    maximum-paths ibgp 10
+    advertise-pip
+  template peer peer_LEAF_EVPN
+    remote-as 65001
+    update-source loopback0
+    timers 3 9
+    address-family l2vpn evpn
+      send-community
+      send-community extended
+  template peer peer_LEAF_UNDERLAY
+    remote-as 65001
+    timers 3 9
+    address-family ipv4 unicast
+  neighbor 10.1.241.8
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine1_Underlay
+  neighbor 10.1.242.8
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine2_Underlay
+  neighbor 10.1.255.1
+    inherit peer peer_LEAF_EVPN
+    description to_Spine1_EVPN
+  neighbor 10.1.255.2
+    inherit peer peer_LEAF_EVPN
+    description to_Spine2_EVPN
+  vrf vrf_DC-FE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-BE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-DB
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+  vrf vrf_DC-CORP
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute direct route-map rm_DIRECT_TO_EVPN
+evpn
+  vni 10010 l2
+    rd 10.1.254.15:10010
+    route-target import auto
+    route-target import 65001:10010
+    route-target export auto
+    route-target export 65001:10010
+  vni 10020 l2
+    rd 10.1.254.15:10020
+    route-target import auto
+    route-target import 65001:10020
+    route-target export auto
+    route-target export 65001:10020
+  vni 10030 l2
+    rd 10.1.254.15:10030
+    route-target import auto
+    route-target import 65001:10030
+    route-target export auto
+    route-target export 65001:10030
+  vni 10040 l2
+    rd 10.1.254.15:10040
+    route-target import auto
+    route-target import 65001:10040
+    route-target export auto
+    route-target export 65001:10040
+  vni 10050 l2
+    rd 10.1.254.15:10050
+    route-target import auto
+    route-target import 65001:10050
+    route-target export auto
+    route-target export 65001:10050
+end
+```	
+</details>
+
+#### 3.5. DC-BB-01A → Border Leaf-1
+<details>
+<summary>Демонтируем временные Po47 и Po49, настраиваем VRF, VNI, раздельные политики OSPF ↔ BGP EVPN с филиалами 192.168.0.0/16 le 32 и пиринг к обоим Spine).</summary>
+```eos
+configure terminal
+! --- 1. Демонтаж временных мостов Po47, Po49 и отключение старых портов ---
+no interface Ethernet1/51.195
+no interface Ethernet1/52.195
+no interface port-channel47.192
+no interface port-channel47.193
+no interface port-channel47.194
+no interface port-channel47.195
+no interface port-channel47
+no interface port-channel49
+default interface Ethernet1/47 - 52, Ethernet1/61 - 62
+interface Ethernet1/47 - 50, Ethernet1/61 - 62
+  shutdown
+! --- 2. Включение функционала VXLAN EVPN и единого Anycast MAC ---
+feature bgp
+feature vn-segment-vlan-based
+feature nv overlay
+nv overlay evpn
+fabric forwarding anycast-gateway-mac 0000.2222.3333
+! --- 3. Маппинг VLAN на VNI и настройка изолированных VRF ---
+vlan 10
+  vn-segment 10010
+vlan 20
+  vn-segment 10020
+vlan 30
+  vn-segment 10030
+vlan 40
+  vn-segment 10040
+vlan 50
+  vn-segment 10050
+vlan 1192
+  vn-segment 50192
+vlan 1193
+  vn-segment 50193
+vlan 1194
+  vn-segment 50194
+vlan 1195
+  vn-segment 50195
+vrf context vrf_DC-FE
+  vni 50192
+  rd 10.1.254.251:50192
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50192
+    route-target import 65001:50192 evpn
+    route-target export 65001:50192
+    route-target export 65001:50192 evpn
+vrf context vrf_DC-BE
+  vni 50193
+  rd 10.1.254.251:50193
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50193
+    route-target import 65001:50193 evpn
+    route-target export 65001:50193
+    route-target export 65001:50193 evpn
+vrf context vrf_DC-DB
+  vni 50194
+  rd 10.1.254.251:50194
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50194
+    route-target import 65001:50194 evpn
+    route-target export 65001:50194
+    route-target export 65001:50194 evpn
+vrf context vrf_DC-CORP
+  vni 50195
+  rd 10.1.254.251:50195
+  address-family ipv4 unicast
+    route-target both auto
+    route-target both auto evpn
+    route-target import 65001:50195
+    route-target import 65001:50195 evpn
+    route-target export 65001:50195
+    route-target export 65001:50195 evpn
+! --- 4. Транзитные SVI для Symmetric IRB и клиентские Anycast Gateway ---
+interface Vlan1192
+  no shutdown
+  vrf member vrf_DC-FE
+  ip forward
+interface Vlan1193
+  no shutdown
+  vrf member vrf_DC-BE
+  ip forward
+interface Vlan1194
+  no shutdown
+  vrf member vrf_DC-DB
+  ip forward
+interface Vlan1195
+  no shutdown
+  vrf member vrf_DC-CORP
+  ip forward
+interface Vlan10
+  vrf member vrf_DC-FE
+  no ip redirects
+  ip address 10.1.10.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan20
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.20.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan30
+  vrf member vrf_DC-BE
+  no ip redirects
+  ip address 10.1.30.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan40
+  vrf member vrf_DC-DB
+  no ip redirects
+  ip address 10.1.40.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+interface Vlan50
+  vrf member vrf_DC-CORP
+  no ip redirects
+  ip address 10.1.50.1/24
+  ip local-proxy-arp
+  fabric forwarding mode anycast-gateway
+  no shutdown
+! --- 5. Loopback0/1 (Secondary IP 10.1.254.250/32) и Underlay-линки к Spine-1 и Spine-2 ---
+interface loopback0
+  description BL-1 RID IP 10.1.255.251
+  ip address 10.1.255.251/32
+interface loopback1
+  description BL-1 VTEP IP 10.1.254.251 (vPC Anycast 10.1.254.250)
+  ip address 10.1.254.251/32
+interface Ethernet1/51
+  description DC-COR-01A Eth1/51 (Spine-1)
+  no switchport
+  mtu 9216
+  ip address 10.1.251.1/31
+  no shutdown
+interface Ethernet1/52
+  description DC-COR-01B Eth1/51 (Spine-2)
+  no switchport
+  mtu 9216
+  ip address 10.1.251.65/31
+  no shutdown
+! --- 6. Туннельный интерфейс NVE (Ingress Replication и ARP Suppression) ---
+interface nve1
+  no shutdown
+  host-reachability protocol bgp
+  advertise virtual-rmac
+  source-interface loopback1
+  source-interface hold-down-time 1
+  member vni 10010
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10020
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10030
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10040
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 10050
+    suppress-arp
+    ingress-replication protocol bgp
+  member vni 50192 associate-vrf
+  member vni 50193 associate-vrf
+  member vni 50194 associate-vrf
+  member vni 50195 associate-vrf
+! --- 7. Префикс-листы фильтрации маршрутов между OSPF и BGP EVPN ---
+ip prefix-list pl_FE_TO_OSPF seq 10 permit 10.1.10.0/24 le 32
+ip prefix-list pl_BE_TO_OSPF seq 10 permit 10.1.20.0/24 le 32
+ip prefix-list pl_BE_TO_OSPF seq 20 permit 10.1.30.0/24 le 32
+ip prefix-list pl_DB_TO_OSPF seq 10 permit 10.1.40.0/24 le 32
+ip prefix-list pl_CORP_TO_OSPF seq 10 permit 10.1.50.0/24 le 32
+
+ip prefix-list pl_EXT_TO_FE seq 10 permit 10.1.20.0/24
+ip prefix-list pl_EXT_TO_FE seq 20 permit 10.1.30.0/24
+ip prefix-list pl_EXT_TO_FE seq 30 permit 10.1.40.0/24
+ip prefix-list pl_EXT_TO_FE seq 40 permit 10.1.50.0/24
+ip prefix-list pl_EXT_TO_FE seq 50 permit 192.168.0.0/16 le 32
+
+ip prefix-list pl_EXT_TO_BE seq 10 permit 10.1.10.0/24
+ip prefix-list pl_EXT_TO_BE seq 20 permit 10.1.40.0/24
+ip prefix-list pl_EXT_TO_BE seq 30 permit 10.1.50.0/24
+ip prefix-list pl_EXT_TO_BE seq 40 permit 192.168.0.0/16 le 32
+
+ip prefix-list pl_EXT_TO_DB seq 10 permit 10.1.10.0/24
+ip prefix-list pl_EXT_TO_DB seq 20 permit 10.1.20.0/24
+ip prefix-list pl_EXT_TO_DB seq 30 permit 10.1.30.0/24
+ip prefix-list pl_EXT_TO_DB seq 40 permit 10.1.50.0/24
+ip prefix-list pl_EXT_TO_DB seq 50 permit 192.168.0.0/16 le 32
+
+ip prefix-list pl_EXT_TO_CORP seq 10 permit 10.1.10.0/24
+ip prefix-list pl_EXT_TO_CORP seq 20 permit 10.1.20.0/24
+ip prefix-list pl_EXT_TO_CORP seq 30 permit 10.1.30.0/24
+ip prefix-list pl_EXT_TO_CORP seq 40 permit 10.1.40.0/24
+ip prefix-list pl_EXT_TO_CORP seq 50 permit 192.168.0.0/16 le 32
+! --- 8. Маршрутные карты взаимной редистрибуции OSPF и BGP EVPN ---
+route-map rm_FE_BGP_TO_OSPF permit 10
+  match ip address prefix-list pl_FE_TO_OSPF
+route-map rm_BE_BGP_TO_OSPF permit 10
+  match ip address prefix-list pl_BE_TO_OSPF
+route-map rm_DB_BGP_TO_OSPF permit 10
+  match ip address prefix-list pl_DB_TO_OSPF
+route-map rm_CORP_BGP_TO_OSPF permit 10
+  match ip address prefix-list pl_CORP_TO_OSPF
+route-map rm_OSPF_TO_BGP_FE permit 10
+  match ip address prefix-list pl_EXT_TO_FE
+route-map rm_OSPF_TO_BGP_BE permit 10
+  match ip address prefix-list pl_EXT_TO_BE
+route-map rm_OSPF_TO_BGP_DB permit 10
+  match ip address prefix-list pl_EXT_TO_DB
+route-map rm_OSPF_TO_BGP_CORP permit 10
+  match ip address prefix-list pl_EXT_TO_CORP
+! --- 9. Настройка редистрибуции в OSPF по каждому VRF ---
+router ospf DC
+  vrf vrf_DC-FE
+    redistribute direct route-map rm_FE_BGP_TO_OSPF
+    redistribute bgp 65001 route-map rm_FE_BGP_TO_OSPF
+  vrf vrf_DC-BE
+    redistribute direct route-map rm_BE_BGP_TO_OSPF
+    redistribute bgp 65001 route-map rm_BE_BGP_TO_OSPF
+  vrf vrf_DC-DB
+    redistribute direct route-map rm_DB_BGP_TO_OSPF
+    redistribute bgp 65001 route-map rm_DB_BGP_TO_OSPF
+  vrf vrf_DC-CORP
+    redistribute direct route-map rm_CORP_BGP_TO_OSPF
+    redistribute bgp 65001 route-map rm_CORP_BGP_TO_OSPF
+! --- 10. Настройка iBGP Underlay/Overlay и редистрибуции OSPF в EVPN Type-5 ---
+router bgp 65001
+  router-id 10.1.255.251
+  reconnect-interval 12
+  log-neighbor-changes
+  address-family ipv4 unicast
+    network 10.1.254.251/32
+    network 10.1.255.251/32
+    maximum-paths 10
+    maximum-paths ibgp 10
+  address-family l2vpn evpn
+    maximum-paths 10
+    maximum-paths ibgp 10
+    advertise-pip
+  template peer peer_LEAF_EVPN
+    remote-as 65001
+    update-source loopback0
+    timers 3 9
+    address-family l2vpn evpn
+      send-community
+      send-community extended
+  template peer peer_LEAF_UNDERLAY
+    remote-as 65001
+    timers 3 9
+    address-family ipv4 unicast
+  neighbor 10.1.251.0
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine1_Underlay
+  neighbor 10.1.251.64
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine2_Underlay
+  neighbor 10.1.255.1
+    inherit peer peer_LEAF_EVPN
+    description to_Spine1_EVPN
+  neighbor 10.1.255.2
+    inherit peer peer_LEAF_EVPN
+    description to_Spine2_EVPN
+  vrf vrf_DC-FE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute ospf DC route-map rm_OSPF_TO_BGP_FE
+  vrf vrf_DC-BE
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute ospf DC route-map rm_OSPF_TO_BGP_BE
+  vrf vrf_DC-DB
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute ospf DC route-map rm_OSPF_TO_BGP_DB
+  vrf vrf_DC-CORP
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+      redistribute ospf DC route-map rm_OSPF_TO_BGP_CORP
+! --- 11. Настройка L2 VNI в контексте EVPN ---
+evpn
+  vni 10010 l2
+    rd 10.1.254.251:10010
+    route-target import auto
+    route-target import 65001:10010
+    route-target export auto
+    route-target export 65001:10010
+  vni 10020 l2
+    rd 10.1.254.251:10020
+    route-target import auto
+    route-target import 65001:10020
+    route-target export auto
+    route-target export 65001:10020
+  vni 10030 l2
+    rd 10.1.254.251:10030
+    route-target import auto
+    route-target import 65001:10030
+    route-target export auto
+    route-target export 65001:10030
+  vni 10040 l2
+    rd 10.1.254.251:10040
+    route-target import auto
+    route-target import 65001:10040
+    route-target export auto
+    route-target export 65001:10040
+  vni 10050 l2
+    rd 10.1.254.251:10050
+    route-target import auto
+    route-target import 65001:10050
+    route-target export auto
+    route-target export 65001:10050
+end
+```	
+</details>
+
+#### 3.6. Подключение второго аплинка к Spine-1 (DC-COR-01A) на узлах плеча «B» и демонтаж Po47 на DC-BB-01B
+<details>
+<summary>Применяем набор команд</summary>
+```eos
+! --- На DC-ACC-01B ---
+configure terminal
+default interface Ethernet1/61
+interface Ethernet1/61
+  description DC-COR-01A Eth1/2 (Spine-1)
+  no switchport
+  mtu 9216
+  ip address 10.1.241.3/31
+  no shutdown
+router bgp 65001
+  neighbor 10.1.241.2
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine1_Underlay
+  neighbor 10.1.255.1
+    inherit peer peer_LEAF_EVPN
+    description to_Spine1_EVPN
+end
+! --- На DC-ACC-02B ---
+configure terminal
+default interface Ethernet1/61
+interface Ethernet1/61
+  description DC-COR-01A Eth1/4 (Spine-1)
+  no switchport
+  mtu 9216
+  ip address 10.1.241.7/31
+  no shutdown
+router bgp 65001
+  neighbor 10.1.241.6
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine1_Underlay
+  neighbor 10.1.255.1
+    inherit peer peer_LEAF_EVPN
+    description to_Spine1_EVPN
+end
+! --- На DC-ACC-03B ---
+configure terminal
+default interface Ethernet1/61
+interface Ethernet1/61
+  description DC-COR-01A Eth1/6 (Spine-1)
+  no switchport
+  mtu 9216
+  ip address 10.1.241.11/31
+  no shutdown
+router bgp 65001
+  neighbor 10.1.241.10
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine1_Underlay
+  neighbor 10.1.255.1
+    inherit peer peer_LEAF_EVPN
+    description to_Spine1_EVPN
+end
+! --- На DC-BB-01B (демонтаж временных Po47 и Po49, запуск Eth1/51 к Spine-1) ---
+configure terminal
+no interface port-channel47.192
+no interface port-channel47.193
+no interface port-channel47.194
+no interface port-channel47.195
+no interface port-channel47
+no interface port-channel49
+default interface Ethernet1/47 - 51, Ethernet1/61 - 62
+interface Ethernet1/47 - 50, Ethernet1/61 - 62
+  shutdown
+interface Ethernet1/51
+  description DC-COR-01A Eth1/52 (Spine-1)
+  no switchport
+  mtu 9216
+  ip address 10.1.251.3/31
+  no shutdown
+router bgp 65001
+  neighbor 10.1.251.2
+    inherit peer peer_LEAF_UNDERLAY
+    description to_Spine1_Underlay
+  neighbor 10.1.255.1
+    inherit peer peer_LEAF_EVPN
+    description to_Spine1_EVPN
+end
+```	
+</details>
+
+#### 3.7. Восстановление доменов vPC VXLAN и включение клиентских портов плеча «A»
+<details>
+<summary>Объединяем парные коммутаторы доступа (DC-ACC-01A/B, 02A/B, 03A/B) и пограничные узлы (DC-BB-01A/B) в единые отказоустойчивые домены vPC VXLAN с общими виртуальными адресами VTEP (Anycast VTEP Secondary IP), активируем анонс первичных адресов VTEP (advertise-pip) и виртуальных MAC-адресов маршрутизатора (advertise virtual-rmac), а также возвращаем в работу клиентские порты левого плеча («A») для восстановления полноценного подключения серверов (Dual-Homed LACP).</summary>
+Примечание (особенность виртуальной платформы Cisco Nexus 9300v):
+	При выполнении этапа 3.7 в среде имитационного моделирования (CML) на виртуальных образах Cisco Nexus 9300v повторная активация feature vpc при уже сконфигурированном туннельном интерфейсе interface nve1 приводит к рассинхронизации программного эмулятора Data Plane (ошибка проверки консистентности NVE is only configured on remote vpc и переход интерфейса nve1 в режим VPC-VIP-Only с блокировкой Loopback1 до согласования Secondary IP на обеих нодах пары). На аппаратных коммутаторах серии Cisco Nexus 9000 с физическим ASIC Cloud Scale синхронизация vPC ↔ NVE выполняется аппаратно без прерывания трафика. В лабораторном стенде для завершения инициализации программного эмулятора VTEP после применения конфигурации этапа 3.7 выполняется сохранение конфигурации (copy running-config startup-config) и перезагрузка (reload) узлов плеча «A» и «B». Для корректной работы LACP на стороне конечных хостов в среде CML образы Catalyst 8000v заменены на Cisco IOSvL2 (в связи с дефектом виртуального Broadcom SDK MTS_OPC_PIXM_MOD_MEMB_LTL).
+```eos
+! --- DC-ACC-01B(Leaf-1B) ---
+configure terminal
+feature vpc
+vpc domain 11
+  peer-switch
+  role priority 2000
+  peer-keepalive destination 192.168.0.1 source 192.168.0.2 vrf management
+  peer-gateway
+  layer3 peer-router
+  ip arp synchronize
+interface mgmt0
+  no shutdown
+interface port-channel63
+  switchport trunk allowed vlan 10,20,30,40,50,1192-1195
+  vpc peer-link
+  no shutdown
+interface loopback1
+  ip address 10.1.254.241/32 secondary
+interface nve1
+  advertise virtual-rmac
+router bgp 65001
+  address-family ipv4 unicast
+    network 10.1.254.241/32
+  address-family l2vpn evpn
+    advertise-pip
+end
+	
+! --- DC-ACC-02B (Leaf-2B) ---
+configure terminal
+feature vpc
+vpc domain 12
+  peer-switch
+  role priority 2000
+  peer-keepalive destination 192.168.0.1 source 192.168.0.2 vrf management
+  peer-gateway
+  layer3 peer-router
+  ip arp synchronize
+interface mgmt0
+  no shutdown
+interface port-channel63
+  switchport trunk allowed vlan 10,20,30,40,50,1192-1195
+  no shutdown
+  vpc peer-link
+interface loopback1
+  ip address 10.1.254.242/32 secondary
+interface nve1
+  advertise virtual-rmac
+router bgp 65001
+  address-family ipv4 unicast
+    network 10.1.254.242/32
+  address-family l2vpn evpn
+    advertise-pip
+end
+
+! --- DC-ACC-03B (Leaf-3B) ---
+configure terminal
+feature vpc
+vpc domain 13
+  peer-switch
+  role priority 2000
+  peer-keepalive destination 192.168.0.1 source 192.168.0.2 vrf management
+  peer-gateway
+  layer3 peer-router
+  ip arp synchronize
+interface mgmt0
+  no shutdown
+interface port-channel63
+  switchport trunk allowed vlan 10,20,30,40,50,1192-1195
+  no shutdown
+  vpc peer-link
+interface loopback1
+  ip address 10.1.254.243/32 secondary
+interface nve1
+  advertise virtual-rmac
+router bgp 65001
+  address-family ipv4 unicast
+    network 10.1.254.243/32
+  address-family l2vpn evpn
+    advertise-pip
+end
+
+! --- DC-BB-01B (Border Leaf-2): ---
+configure terminal
+feature vpc
+vpc domain 2
+  peer-switch
+  role priority 2000
+  peer-keepalive destination 192.168.0.1 source 192.168.0.2 vrf management
+  peer-gateway
+  layer3 peer-router
+  ip arp synchronize
+interface mgmt0
+  no shutdown
+interface port-channel63
+  switchport trunk allowed vlan 10,20,30,40,50,1192-1195
+  no shutdown
+  vpc peer-link
+interface loopback1
+  ip address 10.1.254.250/32 secondary
+interface nve1
+  advertise virtual-rmac
+router bgp 65001
+  address-family ipv4 unicast
+    network 10.1.254.250/32
+  address-family l2vpn evpn
+    advertise-pip
+end
+
+! --- DC-ACC-01A (Leaf-1A) ---
+configure terminal
+vpc domain 11
+  peer-switch
+  peer-gateway
+  layer3 peer-router
+  ip arp synchronize
+interface port-channel63
+  switchport trunk allowed vlan 10,20,30,40,50,1192-1195
+  no shutdown
+  vpc peer-link
+interface Ethernet1/1 - 3
+  no shutdown
+end
+
+! --- DC-ACC-02A (Leaf-2A) ---
+configure terminal
+vpc domain 12
+  peer-switch
+  peer-gateway
+  layer3 peer-router
+  ip arp synchronize
+interface port-channel63
+  switchport trunk allowed vlan 10,20,30,40,50,1192-1195
+  no shutdown
+  vpc peer-link
+interface Ethernet1/1
+  no shutdown
+end
+
+! --- DC-ACC-03A (Leaf-3A) ---
+configure terminal
+vpc domain 13
+  peer-switch
+  peer-gateway
+  layer3 peer-router
+  ip arp synchronize
+interface port-channel63
+  switchport trunk allowed vlan 10,20,30,40,50,1192-1195
+  no shutdown
+  vpc peer-link
+interface Ethernet1/1 - 2
+  no shutdown
+end
+
+! --- DC-BB-01A (Border Leaf-1) ---
+configure terminal
+vpc domain 2
+  peer-switch
+  peer-gateway
+  layer3 peer-router
+  ip arp synchronize
+interface port-channel63
+  switchport trunk allowed vlan 10,20,30,40,50,1192-1195
+  no shutdown
+  vpc peer-link
+interface loopback1
+  ip address 10.1.254.250/32 secondary
+interface nve1
+  advertise virtual-rmac
+router bgp 65001
+  address-family ipv4 unicast
+    network 10.1.254.250/32
+  address-family l2vpn evpn
+    advertise-pip
+end
+```	
+</details>
+
 ### Этап 4.
+** Цель: **
+Привести конфигурацию к эталонному состоянию топологии Clos и сохранить изменения в энергонезависимую память.
+
+
+
+
+
+
+
+
+#### 1.2. DC-ACC-01B → Leaf-2
+
+
+
+
 
 ## 10. Приложение 3. Вывод команд диагностики в процессе выполнения работы
 
 <details>
-<summary>КОД</summary>
+<summary>Применяем набор команд</summary>
 
 ```eos
-	
-	...
+...
 ```	
 </details>
 
+
 ## 10. Презентация
+**Цель:** Подготовить новую точку выхода во внешний мир и между зонами безопасности на уровне DC-BB без прерывания действующего трафика (который продолжает ходить через ядро DC-COR-01A/B). Для исключения потерь при единичном обрыве аплинка поднимается временный межблочный L3-канал Po47 между DC-BB-01A и DC-BB-01B, а для связки старого и нового L2-доменов создаётся изолированный от STP мост Po49.
+
 
 ...
 

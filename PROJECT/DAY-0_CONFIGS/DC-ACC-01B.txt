@@ -1,0 +1,322 @@
+DC-ACC-01B# sh run
+
+!Command: show running-config
+!Running configuration last done at: Sat Nov  7 13:16:44 2026
+!Time: Mon Nov  9 04:36:36 2026
+
+version 10.5(3) Bios:version
+hostname DC-ACC-01B
+vdc DC-ACC-01B id 1
+  limit-resource vlan minimum 16 maximum 4094
+  limit-resource vrf minimum 2 maximum 4096
+  limit-resource port-channel minimum 0 maximum 511
+  limit-resource m4route-mem minimum 58 maximum 58
+  limit-resource m6route-mem minimum 8 maximum 8
+
+feature tacacs+
+cfs eth distribute
+feature scheduler
+feature ospf
+feature bgp
+feature pbr
+feature udld
+feature interface-vlan
+feature hsrp
+feature lacp
+feature vpc
+feature lldp
+feature vtp
+feature bfd
+clock timezone MSK 3 0
+
+no password strength-check
+username admin password 5 $5$NJAKBF$LWUJcVW.E7P8BFWovM5q1r6efPMdjd.hBDtarw739P8
+ role network-admin
+username cisco password 5 $5$HDALEF$OaLMq6lFMv7upVQm/CY.XZT2sLNejMPmRmNBZRRRVC5
+ role network-admin
+username cisco passphrase  lifetime 99999 warntime 14 gracetime 3
+no ip domain-lookup
+diagnostic bootup level minimal
+copp profile strict
+hardware access-list tcam region racl 0
+hardware access-list tcam region arp-ether 256
+bfd interval 10 min_rx 10 multiplier 3
+snmp ifmib ifalias long
+snmp-server user admin network-admin auth md5 3777D947736ED356F303662D9B3C4F0823
+50 priv aes-128 040BBA750A7CAA6DA84E2569D861122D4165 localizedV2key
+snmp-server user cisco network-admin auth md5 0147BB754A08B373981B650D94270F0329
+1B priv aes-128 167FCD55001DA02D92631035C72C4B51220D localizedV2key
+rmon event 1 log trap public description FATAL(1) owner PMON@FATAL
+rmon event 2 log trap public description CRITICAL(2) owner PMON@CRITICAL
+rmon event 3 log trap public description ERROR(3) owner PMON@ERROR
+rmon event 4 log trap public description WARNING(4) owner PMON@WARNING
+rmon event 5 log trap public description INFORMATION(5) owner PMON@INFO
+errdisable recovery interval 30
+errdisable recovery cause link-flap
+errdisable recovery cause udld
+errdisable recovery cause bpduguard
+errdisable recovery cause loopback
+errdisable recovery cause storm-control
+errdisable recovery cause security-violation
+errdisable recovery cause psecure-violation
+errdisable recovery cause vpc-peerlink
+errdisable recovery cause failed-port-state
+
+system vlan long-name
+vlan 1,10,20,30,40,50,999
+vlan 10
+  name DC-FE_vrf_DC-FE
+vlan 20
+  name DC-BE_vrf_DC-BE
+vlan 30
+  name DC-DATA_vrf_DC-BE
+vlan 40
+  name DC-DB_vrf_DC-DB
+vlan 50
+  name DC-CORP_vrf_DC-CORP
+vlan 999
+  name NATIVE
+
+cdp format device-id system-name
+spanning-tree loopguard default
+vrf context keepalive
+vrf context management
+vpc domain 11
+  peer-switch
+  role priority 2000
+  system-priority 1000
+  peer-keepalive destination 192.168.0.1 source 192.168.0.2
+  delay restore 1
+  peer-gateway
+  layer3 peer-router
+  auto-recovery
+  fast-convergence
+  ip arp synchronize
+
+
+interface Vlan1
+  description *** ADMINISTRATIVELY SHUTDOWN ***
+  no ip redirects
+  no ipv6 redirects
+
+interface port-channel1
+  description HOST_1-1 Po 1 IP 10.1.10.11
+  switchport access vlan 10
+  spanning-tree port type edge
+  vpc 1
+
+interface port-channel2
+  description HOST_1-2 Po 1 IP 10.1.20.11
+  switchport access vlan 20
+  spanning-tree port type edge
+  vpc 2
+
+interface port-channel3
+  description HOST_1-3 Po 1 IP 10.1.30.11
+  switchport access vlan 30
+  spanning-tree port type edge
+  vpc 3
+
+interface port-channel61
+  description DC-COR-01A/B Po 1 NO IP
+  switchport mode trunk
+  switchport trunk native vlan 999
+  spanning-tree port type network
+  vpc 61
+
+interface port-channel63
+  description VPC PEER-LINK NO IP
+  switchport mode trunk
+  switchport trunk native vlan 999
+  spanning-tree port type network
+  vpc peer-link
+
+interface Ethernet1/1
+  description HOST_1-1 Eth 2 IP 10.1.10.11
+  switchport access vlan 10
+  channel-group 1 mode active
+
+interface Ethernet1/2
+  description HOST_1-2 Eth 2 IP 10.1.20.11
+  switchport access vlan 20
+  channel-group 2 mode active
+
+interface Ethernet1/3
+  description HOST_1-3 Eth 2 IP 10.1.30.11
+  switchport access vlan 30
+  channel-group 3 mode active
+
+interface Ethernet1/4
+
+interface Ethernet1/5
+
+interface Ethernet1/6
+
+interface Ethernet1/7
+
+interface Ethernet1/8
+
+interface Ethernet1/9
+
+interface Ethernet1/10
+
+interface Ethernet1/11
+
+interface Ethernet1/12
+
+interface Ethernet1/13
+
+interface Ethernet1/14
+
+interface Ethernet1/15
+
+interface Ethernet1/16
+
+interface Ethernet1/17
+
+interface Ethernet1/18
+
+interface Ethernet1/19
+
+interface Ethernet1/20
+
+interface Ethernet1/21
+
+interface Ethernet1/22
+
+interface Ethernet1/23
+
+interface Ethernet1/24
+
+interface Ethernet1/25
+
+interface Ethernet1/26
+
+interface Ethernet1/27
+
+interface Ethernet1/28
+
+interface Ethernet1/29
+
+interface Ethernet1/30
+
+interface Ethernet1/31
+
+interface Ethernet1/32
+
+interface Ethernet1/33
+
+interface Ethernet1/34
+
+interface Ethernet1/35
+
+interface Ethernet1/36
+
+interface Ethernet1/37
+
+interface Ethernet1/38
+
+interface Ethernet1/39
+
+interface Ethernet1/40
+
+interface Ethernet1/41
+
+interface Ethernet1/42
+
+interface Ethernet1/43
+
+interface Ethernet1/44
+
+interface Ethernet1/45
+
+interface Ethernet1/46
+
+interface Ethernet1/47
+
+interface Ethernet1/48
+
+interface Ethernet1/49
+
+interface Ethernet1/50
+
+interface Ethernet1/51
+
+interface Ethernet1/52
+
+interface Ethernet1/53
+
+interface Ethernet1/54
+
+interface Ethernet1/55
+
+interface Ethernet1/56
+
+interface Ethernet1/57
+
+interface Ethernet1/58
+
+interface Ethernet1/59
+
+interface Ethernet1/60
+
+interface Ethernet1/61
+  description DC-COR-01A Eth 1/2 NO IP
+  switchport mode trunk
+  switchport trunk native vlan 999
+  channel-group 61 mode active
+
+interface Ethernet1/62
+  description DC-COR-01B Eth 1/2 NO IP
+  switchport mode trunk
+  switchport trunk native vlan 999
+  channel-group 61 mode active
+
+interface Ethernet1/63
+  description DC-ACC-01A Eth 1/63 NO IP
+  switchport mode trunk
+  switchport trunk native vlan 999
+  channel-group 63 mode active
+
+interface Ethernet1/64
+  description DC-ACC-01A Eth 1/64 NO IP
+  switchport mode trunk
+  switchport trunk native vlan 999
+  channel-group 63 mode active
+
+interface mgmt0
+  description KEEPALIVE PEERING IP 192.168.0.0/32
+  vrf member management
+  ip address 192.168.0.2/30
+icam monitor scale
+
+cli alias name cprs copy running-config startup-config
+cli alias name ct conf t
+cli alias name q exit
+cli alias name s show ip interface brief vrf all
+cli alias name sa show cli alias
+cli alias name sacl show access-lists
+cli alias name sacle show access-lists expanded
+cli alias name sc show interface status | include connected
+cli alias name sd show interface description
+cli alias name si show interface
+cli alias name sn show cdp neighbors
+cli alias name sni show cdp neighbors interface
+cli alias name sp show port-channel summary | include
+cli alias name spc show port-channel summary interface
+cli alias name sr show running-config
+cli alias name sra show running-config | include "^cli alias"
+cli alias name sracl show running-config aclmgr
+cli alias name srbe show running-config | begin
+cli alias name srcli show running-config | include ^cli
+cli alias name sri show running-config interface
+cli alias name srin show running-config | include
+cli alias name ss show interface status
+cli alias name wr copy running-config startup-config
+cli alias name wrq copy running-config startup-config ; exit
+cli alias name wrv copy running-config startup-config vdc-all
+line console
+line vty
+boot nxos bootflash:/nxos64-cs.10.5.3.F.bin
+
+logging timestamp milliseconds

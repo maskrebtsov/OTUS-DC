@@ -3585,8 +3585,6 @@ end
 #### 3.7. Восстановление доменов vPC VXLAN и включение клиентских портов плеча «A»
 <details>
 <summary>Объединяем парные коммутаторы доступа (DC-ACC-01A/B, 02A/B, 03A/B) и пограничные узлы (DC-BB-01A/B) в единые отказоустойчивые домены vPC VXLAN с общими виртуальными адресами VTEP (Anycast VTEP Secondary IP), активируем анонс первичных адресов VTEP (advertise-pip) и виртуальных MAC-адресов маршрутизатора (advertise virtual-rmac), а также возвращаем в работу клиентские порты левого плеча («A») для восстановления полноценного подключения серверов (Dual-Homed LACP).</summary>
-Примечание (особенность виртуальной платформы Cisco Nexus 9300v):
-	При выполнении этапа 3.7 в среде имитационного моделирования (CML) на виртуальных образах Cisco Nexus 9300v повторная активация feature vpc при уже сконфигурированном туннельном интерфейсе interface nve1 приводит к рассинхронизации программного эмулятора Data Plane (ошибка проверки консистентности NVE is only configured on remote vpc и переход интерфейса nve1 в режим VPC-VIP-Only с блокировкой Loopback1 до согласования Secondary IP на обеих нодах пары). На аппаратных коммутаторах серии Cisco Nexus 9000 с физическим ASIC Cloud Scale синхронизация vPC ↔ NVE выполняется аппаратно без прерывания трафика. В лабораторном стенде для завершения инициализации программного эмулятора VTEP после применения конфигурации этапа 3.7 выполняется сохранение конфигурации (copy running-config startup-config) и перезагрузка (reload) узлов плеча «A» и «B». Для корректной работы LACP на стороне конечных хостов в среде CML образы Catalyst 8000v заменены на Cisco IOSvL2 (в связи с дефектом виртуального Broadcom SDK MTS_OPC_PIXM_MOD_MEMB_LTL).
 	
 ```eos
 ! --- DC-ACC-01B(Leaf-1B) ---
@@ -3767,36 +3765,2430 @@ end
 ```	
 </details>
 
+**Примечание (особенность виртуальной платформы Cisco Nexus 9300v):**
+	При выполнении этапа 3.7 в среде имитационного моделирования (CML) на виртуальных образах Cisco Nexus 9300v повторная активация feature vpc при уже сконфигурированном туннельном интерфейсе interface nve1 приводит к рассинхронизации программного эмулятора Data Plane (ошибка проверки консистентности NVE is only configured on remote vpc и переход интерфейса nve1 в режим VPC-VIP-Only с блокировкой Loopback1 до согласования Secondary IP на обеих нодах пары). На аппаратных коммутаторах серии Cisco Nexus 9000 с физическим ASIC Cloud Scale синхронизация vPC ↔ NVE выполняется аппаратно без прерывания трафика. В лабораторном стенде для завершения инициализации программного эмулятора VTEP после применения конфигурации этапа 3.7 выполняется сохранение конфигурации (copy running-config startup-config) и перезагрузка (reload) узлов плеча «A» и «B». Для корректной работы LACP на стороне конечных хостов в среде CML образы Catalyst 8000v заменены на Cisco IOSvL2 (в связи с дефектом виртуального Broadcom SDK MTS_OPC_PIXM_MOD_MEMB_LTL).
+
 ### Этап 4.
-** Цель: **
+**Цель:**
 Привести конфигурацию к эталонному состоянию топологии Clos и сохранить изменения в энергонезависимую память.
 
+#### 4.1. DC-COR-01A и DC-COR-01B (Spine-1 и Spine-2)
+<details>
+<summary>Применяем набор команд</summary>
 
+```eos
+configure terminal
+default interface Ethernet1/49 - 50, Ethernet1/59 - 64
+interface Ethernet1/49 - 50, Ethernet1/59 - 64
+  shutdown
+end
+copy running-config startup-config
 
+```	
+</details>
 
+#### 4.2. DC-EXT-01 и DC-EXT-02 (МСЭ периметра)
+<details>
+<summary>Применяем набор команд</summary>
 
+```eos
+configure terminal
+no interface GigabitEthernet3.192
+no interface GigabitEthernet3.193
+no interface GigabitEthernet3.194
+no interface GigabitEthernet3.195
+no interface GigabitEthernet4.192
+no interface GigabitEthernet4.193
+no interface GigabitEthernet4.194
+no interface GigabitEthernet4.195
+default interface GigabitEthernet3
+interface GigabitEthernet3
+  shutdown
+default interface GigabitEthernet4
+interface GigabitEthernet4
+  shutdown
+end
+write memory
 
+```	
+</details>
 
+#### 4.3. Сохранение конфигураций на всех коммутаторах Leaf и Border Leaf
+<details>
+<summary>Применяем набор команд</summary>
 
-#### 1.2. DC-ACC-01B → Leaf-2
+```eos
+! --- Выполнить на DC-ACC-01A/B, DC-ACC-02A/B, DC-ACC-03A/B, DC-BB-01A/B ---
+copy running-config startup-config
 
-
-
+```	
+</details>
 
 
 ## 10. Приложение 3. Вывод команд диагностики в процессе выполнения работы
+
+### Этап 1.
+
+#### 1.1. Spine-2 (DC-COR-01B) — Проверка Underlay и Overlay (Route Reflector)
+<details>
+<summary>Подтверждаем, что все 4 узла плеча «B» (Leaf-1B, Leaf-2B, Leaf-3B, BL-2) установили BGP-соседство, а таблица маршрутизации Underlay содержит все Loopback0/1 и Anycast VTEP-адреса.</summary>
+
+```eos
+DC-COR-01B# show bgp ipv4 unicast summary
+BGP summary information for VRF default, address family IPv4 Unicast
+BGP router identifier 10.1.255.2, local AS number 65001
+BGP table version is 84, IPv4 Unicast config peers 6, capable peers 4
+13 network entries and 13 paths using 4732 bytes of memory
+BGP attribute entries [2/736], BGP AS path entries [0/0]
+BGP community entries [0/0], BGP clusterlist entries [0/0]
+Neighbor        V    AS    MsgRcvd    MsgSent   TblVer  InQ OutQ Up/Down  State/
+PfxRcd
+10.1.242.3      4 65001       6420       6416       84    0    0 03:15:34 3
+10.1.242.7      4 65001       6421       6418       84    0    0 03:15:38 3
+10.1.242.11     4 65001       6423       6418       84    0    0 03:15:38 3
+10.1.251.67     4 65001       6415       6414       84    0    0 03:15:35 3
+
+DC-COR-01B# show bgp l2vpn evpn summary
+BGP summary information for VRF default, address family L2VPN EVPN
+BGP router identifier 10.1.255.2, local AS number 65001
+BGP table version is 1049, L2VPN EVPN config peers 5, capable peers 4
+60 network entries and 60 paths using 21840 bytes of memory
+BGP attribute entries [43/15824], BGP AS path entries [0/0]
+BGP community entries [0/0], BGP clusterlist entries [0/0]
+
+Neighbor        V    AS    MsgRcvd    MsgSent   TblVer  InQ OutQ Up/Down  State/
+PfxRcd
+10.1.255.12     4 65001       6468       6436     1049    0    0 03:15:45 9
+10.1.255.14     4 65001       6469       6440     1049    0    0 03:15:57 9
+10.1.255.16     4 65001       6530       6433     1049    0    0 03:15:44 9
+10.1.255.252    4 65001       6490       6428     1049    0    0 03:15:46 33
+
+Neighbor        T    AS Type-1     Type-2     Type-3     Type-4     Type-5     T
+ype-6     Type-7     Type-8     Type-12
+10.1.255.12     I 65001 0          4          5          0          0          0
+          0          0          0
+10.1.255.14     I 65001 0          4          5          0          0          0
+          0          0          0
+10.1.255.16     I 65001 0          4          5          0          0          0
+          0          0          0
+10.1.255.252    I 65001 0          4          5          0          24         0
+          0          0          0
+DC-COR-01B# show ip route bgp
+IP Route Table for VRF "default"
+'*' denotes best ucast next-hop
+'**' denotes best mcast next-hop
+'[x/y]' denotes [preference/metric]
+'%<string>' in via output denotes VRF <string>
+
+10.1.254.12/32, ubest/mbest: 1/0
+    *via 10.1.242.3, [200/0], 00:36:10, bgp-65001, internal, tag 65001
+10.1.254.14/32, ubest/mbest: 1/0
+    *via 10.1.242.7, [200/0], 03:16:24, bgp-65001, internal, tag 65001
+10.1.254.16/32, ubest/mbest: 1/0
+    *via 10.1.242.11, [200/0], 03:16:24, bgp-65001, internal, tag 65001
+10.1.254.241/32, ubest/mbest: 1/0
+    *via 10.1.242.3, [200/0], 00:36:10, bgp-65001, internal, tag 65001
+10.1.254.242/32, ubest/mbest: 1/0
+    *via 10.1.242.7, [200/0], 03:16:24, bgp-65001, internal, tag 65001
+10.1.254.243/32, ubest/mbest: 1/0
+    *via 10.1.242.11, [200/0], 03:16:24, bgp-65001, internal, tag 65001
+10.1.254.250/32, ubest/mbest: 1/0
+    *via 10.1.251.67, [200/0], 03:16:24, bgp-65001, internal, tag 65001
+10.1.254.252/32, ubest/mbest: 1/0
+    *via 10.1.251.67, [200/0], 03:16:24, bgp-65001, internal, tag 65001
+10.1.255.12/32, ubest/mbest: 1/0
+    *via 10.1.242.3, [200/0], 00:36:10, bgp-65001, internal, tag 65001
+10.1.255.14/32, ubest/mbest: 1/0
+    *via 10.1.242.7, [200/0], 03:16:24, bgp-65001, internal, tag 65001
+10.1.255.16/32, ubest/mbest: 1/0
+    *via 10.1.242.11, [200/0], 03:16:24, bgp-65001, internal, tag 65001
+10.1.255.252/32, ubest/mbest: 1/0
+    *via 10.1.251.67, [200/0], 03:16:24, bgp-65001, internal, tag 65001
+
+```	
+</details>
+
+#### 1.2. Border Leaf-2 (DC-BB-01B) — Проверка VXLAN Data Plane, VRF и редистрибуции OSPF ↔ EVPN
+<details>
+<summary>Подтверждаем, что туннельный интерфейс nve1 поднял пиров со всеми Leaf плеча «B», VNI привязаны корректно, а внешние маршруты от DC-EXT-01/02 и филиалов попали в нужные VRF и анонсируются в EVPN без утечки между контурами.</summary>
+
+```eos
+DC-BB-01B# show nve interface nve 1 detail
+Interface: nve1, State: Up, encapsulation: VXLAN
+ VPC Capability: VPC-VIP-Only [not-notified]
+ Local Router MAC: 5261.beee.1b08
+ Host Learning Mode: Control-Plane
+ Source-Interface: loopback1 (primary: 10.1.254.252, secondary: 10.1.254.250)
+ Source Interface State: Up
+ Virtual RMAC Advertisement: Yes
+ NVE Flags:
+ Interface Handle: 0x49000001
+ Source Interface hold-down-time: 1
+ Source Interface hold-up-time: 30
+ Remaining hold-down time: 0 seconds
+ Virtual Router MAC: 0200.0a01.fefa
+ Interface state: nve-intf-add-complete
+ Fabric convergence time: 135 seconds
+ Fabric convergence time left: 0 seconds
+
+DC-BB-01B# show nve peers
+Interface Peer-IP                                 State LearnType Uptime   Route
+r-Mac
+--------- --------------------------------------  ----- --------- -------- -----
+------------
+nve1      10.1.254.12                             Up    CP        03:16:53 520a.
+9beb.1b08
+nve1      10.1.254.14                             Up    CP        03:16:53 52b6.
+3045.1b08
+nve1      10.1.254.16                             Up    CP        03:16:52 52dc.
+572c.1b08
+nve1      10.1.254.241                            Up    CP        03:16:53 n/a
+nve1      10.1.254.242                            Up    CP        03:16:53 n/a
+nve1      10.1.254.243                            Up    CP        03:16:53 n/a
+
+DC-BB-01B# show nve vni
+Codes: CP - Control Plane        DP - Data Plane
+       UC - Unconfigured         SA - Suppress ARP
+       S-ND - Suppress ND
+       SU - Suppress Unknown Unicast
+       Xconn - Crossconnect
+       MS-IR - Multisite Ingress Replication
+       HYB - Hybrid IRB mode
+Interface VNI      Multicast-group   State Mode Type [BD/VRF]      Flags
+--------- -------- ----------------- ----- ---- ------------------ -----
+nve1      10010    UnicastBGP        Up    CP   L2 [10]            SA
+nve1      10020    UnicastBGP        Up    CP   L2 [20]            SA
+nve1      10030    UnicastBGP        Up    CP   L2 [30]            SA
+nve1      10040    UnicastBGP        Up    CP   L2 [40]            SA
+nve1      10050    UnicastBGP        Up    CP   L2 [50]            SA
+nve1      50192    n/a               Up    CP   L3 [vrf_DC-FE]
+nve1      50193    n/a               Up    CP   L3 [vrf_DC-BE]
+nve1      50194    n/a               Up    CP   L3 [vrf_DC-DB]
+nve1      50195    n/a               Up    CP   L3 [vrf_DC-CORP]
+
+DC-BB-01B#  show bgp l2vpn evpn vrf all
+BGP routing table information for VRF default, address family L2VPN EVPN
+BGP table version is 1084, Local Router ID is 10.1.255.252
+Status: s-suppressed, x-deleted, S-stale, d-dampened, h-history, *-valid, >-best
+Path type: i-internal, e-external, c-confed, l-local, a-aggregate, r-redist, I-i
+njected
+Origin codes: i - IGP, e - EGP, ? - incomplete, | - multipath, & - backup, 2 - b
+est2
+   Network            Next Hop            Metric     LocPrf     Weight Path
+Route Distinguisher: 10.1.254.12:10010
+*>i[3]:[0]:[32]:[10.1.254.241]/88
+                      10.1.254.12                       100          0 i
+
+Route Distinguisher: 10.1.254.12:10020
+*>i[3]:[0]:[32]:[10.1.254.241]/88
+                      10.1.254.12                       100          0 i
+
+Route Distinguisher: 10.1.254.12:10030
+*>i[3]:[0]:[32]:[10.1.254.241]/88
+                      10.1.254.12                       100          0 i
+
+Route Distinguisher: 10.1.254.12:10040
+*>i[3]:[0]:[32]:[10.1.254.241]/88
+                      10.1.254.12                       100          0 i
+
+Route Distinguisher: 10.1.254.12:10050
+*>i[3]:[0]:[32]:[10.1.254.241]/88
+                      10.1.254.12                       100          0 i
+
+Route Distinguisher: 10.1.254.12:50192
+*>i[2]:[0]:[0]:[48]:[520a.9beb.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.12                       100          0 i
+
+Route Distinguisher: 10.1.254.12:50193
+*>i[2]:[0]:[0]:[48]:[520a.9beb.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.12                       100          0 i
+
+Route Distinguisher: 10.1.254.12:50194
+*>i[2]:[0]:[0]:[48]:[520a.9beb.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.12                       100          0 i
+
+Route Distinguisher: 10.1.254.12:50195
+*>i[2]:[0]:[0]:[48]:[520a.9beb.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.12                       100          0 i
+
+Route Distinguisher: 10.1.254.14:10010
+*>i[3]:[0]:[32]:[10.1.254.242]/88
+                      10.1.254.14                       100          0 i
+
+Route Distinguisher: 10.1.254.14:10020
+*>i[3]:[0]:[32]:[10.1.254.242]/88
+                      10.1.254.14                       100          0 i
+
+Route Distinguisher: 10.1.254.14:10030
+*>i[3]:[0]:[32]:[10.1.254.242]/88
+                      10.1.254.14                       100          0 i
+
+Route Distinguisher: 10.1.254.14:10040
+*>i[3]:[0]:[32]:[10.1.254.242]/88
+                      10.1.254.14                       100          0 i
+
+Route Distinguisher: 10.1.254.14:10050
+*>i[3]:[0]:[32]:[10.1.254.242]/88
+                      10.1.254.14                       100          0 i
+
+Route Distinguisher: 10.1.254.14:50192
+*>i[2]:[0]:[0]:[48]:[52b6.3045.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.14                       100          0 i
+
+Route Distinguisher: 10.1.254.14:50193
+*>i[2]:[0]:[0]:[48]:[52b6.3045.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.14                       100          0 i
+
+Route Distinguisher: 10.1.254.14:50194
+*>i[2]:[0]:[0]:[48]:[52b6.3045.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.14                       100          0 i
+
+Route Distinguisher: 10.1.254.14:50195
+*>i[2]:[0]:[0]:[48]:[52b6.3045.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.14                       100          0 i
+
+Route Distinguisher: 10.1.254.16:10010
+*>i[3]:[0]:[32]:[10.1.254.243]/88
+                      10.1.254.16                       100          0 i
+
+Route Distinguisher: 10.1.254.16:10020
+*>i[3]:[0]:[32]:[10.1.254.243]/88
+                      10.1.254.16                       100          0 i
+
+Route Distinguisher: 10.1.254.16:10030
+*>i[3]:[0]:[32]:[10.1.254.243]/88
+                      10.1.254.16                       100          0 i
+
+Route Distinguisher: 10.1.254.16:10040
+*>i[3]:[0]:[32]:[10.1.254.243]/88
+                      10.1.254.16                       100          0 i
+
+Route Distinguisher: 10.1.254.16:10050
+*>i[3]:[0]:[32]:[10.1.254.243]/88
+                      10.1.254.16                       100          0 i
+
+Route Distinguisher: 10.1.254.16:50192
+*>i[2]:[0]:[0]:[48]:[52dc.572c.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.16                       100          0 i
+
+Route Distinguisher: 10.1.254.16:50193
+*>i[2]:[0]:[0]:[48]:[52dc.572c.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.16                       100          0 i
+
+Route Distinguisher: 10.1.254.16:50194
+*>i[2]:[0]:[0]:[48]:[52dc.572c.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.16                       100          0 i
+
+Route Distinguisher: 10.1.254.16:50195
+*>i[2]:[0]:[0]:[48]:[52dc.572c.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.16                       100          0 i
+
+Route Distinguisher: 10.1.254.252:10010    (L2VNI 10010)
+*>i[3]:[0]:[32]:[10.1.254.241]/88
+                      10.1.254.12                       100          0 i
+*>i[3]:[0]:[32]:[10.1.254.242]/88
+                      10.1.254.14                       100          0 i
+*>i[3]:[0]:[32]:[10.1.254.243]/88
+                      10.1.254.16                       100          0 i
+*>l[3]:[0]:[32]:[10.1.254.250]/88
+                      10.1.254.252                      100      32768 i
+
+Route Distinguisher: 10.1.254.252:10020    (L2VNI 10020)
+*>i[3]:[0]:[32]:[10.1.254.241]/88
+                      10.1.254.12                       100          0 i
+*>i[3]:[0]:[32]:[10.1.254.242]/88
+                      10.1.254.14                       100          0 i
+*>i[3]:[0]:[32]:[10.1.254.243]/88
+                      10.1.254.16                       100          0 i
+*>l[3]:[0]:[32]:[10.1.254.250]/88
+                      10.1.254.252                      100      32768 i
+
+Route Distinguisher: 10.1.254.252:10030    (L2VNI 10030)
+*>i[3]:[0]:[32]:[10.1.254.241]/88
+                      10.1.254.12                       100          0 i
+*>i[3]:[0]:[32]:[10.1.254.242]/88
+                      10.1.254.14                       100          0 i
+*>i[3]:[0]:[32]:[10.1.254.243]/88
+                      10.1.254.16                       100          0 i
+*>l[3]:[0]:[32]:[10.1.254.250]/88
+                      10.1.254.252                      100      32768 i
+
+Route Distinguisher: 10.1.254.252:10040    (L2VNI 10040)
+*>i[3]:[0]:[32]:[10.1.254.241]/88
+                      10.1.254.12                       100          0 i
+*>i[3]:[0]:[32]:[10.1.254.242]/88
+                      10.1.254.14                       100          0 i
+*>i[3]:[0]:[32]:[10.1.254.243]/88
+                      10.1.254.16                       100          0 i
+*>l[3]:[0]:[32]:[10.1.254.250]/88
+                      10.1.254.252                      100      32768 i
+
+Route Distinguisher: 10.1.254.252:10050    (L2VNI 10050)
+*>i[3]:[0]:[32]:[10.1.254.241]/88
+                      10.1.254.12                       100          0 i
+*>i[3]:[0]:[32]:[10.1.254.242]/88
+                      10.1.254.14                       100          0 i
+*>i[3]:[0]:[32]:[10.1.254.243]/88
+                      10.1.254.16                       100          0 i
+*>l[3]:[0]:[32]:[10.1.254.250]/88
+                      10.1.254.252                      100      32768 i
+
+Route Distinguisher: 10.1.254.252:50192    (L3VNI 50192)
+*>i[2]:[0]:[0]:[48]:[520a.9beb.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.12                       100          0 i
+*>l[2]:[0]:[0]:[48]:[5261.beee.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.252                      100      32768 i
+*>i[2]:[0]:[0]:[48]:[52b6.3045.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.14                       100          0 i
+*>i[2]:[0]:[0]:[48]:[52dc.572c.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.16                       100          0 i
+*>l[5]:[0]:[0]:[24]:[10.1.20.0]/224
+                      10.1.254.252            81        100      32768 ?
+*>l[5]:[0]:[0]:[24]:[10.1.30.0]/224
+                      10.1.254.252            81        100      32768 ?
+*>l[5]:[0]:[0]:[24]:[10.1.40.0]/224
+                      10.1.254.252            81        100      32768 ?
+*>l[5]:[0]:[0]:[24]:[10.1.50.0]/224
+                      10.1.254.252            81        100      32768 ?
+
+Route Distinguisher: 10.1.254.252:50193    (L3VNI 50193)
+*>i[2]:[0]:[0]:[48]:[520a.9beb.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.12                       100          0 i
+*>l[2]:[0]:[0]:[48]:[5261.beee.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.252                      100      32768 i
+*>i[2]:[0]:[0]:[48]:[52b6.3045.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.14                       100          0 i
+*>i[2]:[0]:[0]:[48]:[52dc.572c.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.16                       100          0 i
+*>l[5]:[0]:[0]:[24]:[10.1.10.0]/224
+                      10.1.254.252            81        100      32768 ?
+*>l[5]:[0]:[0]:[24]:[10.1.40.0]/224
+                      10.1.254.252            81        100      32768 ?
+*>l[5]:[0]:[0]:[24]:[10.1.50.0]/224
+                      10.1.254.252            81        100      32768 ?
+
+Route Distinguisher: 10.1.254.252:50194    (L3VNI 50194)
+*>i[2]:[0]:[0]:[48]:[520a.9beb.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.12                       100          0 i
+*>l[2]:[0]:[0]:[48]:[5261.beee.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.252                      100      32768 i
+*>i[2]:[0]:[0]:[48]:[52b6.3045.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.14                       100          0 i
+*>i[2]:[0]:[0]:[48]:[52dc.572c.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.16                       100          0 i
+*>l[5]:[0]:[0]:[24]:[10.1.10.0]/224
+                      10.1.254.252            81        100      32768 ?
+*>l[5]:[0]:[0]:[24]:[10.1.20.0]/224
+                      10.1.254.252            81        100      32768 ?
+*>l[5]:[0]:[0]:[24]:[10.1.30.0]/224
+                      10.1.254.252            81        100      32768 ?
+*>l[5]:[0]:[0]:[24]:[10.1.50.0]/224
+                      10.1.254.252            81        100      32768 ?
+
+Route Distinguisher: 10.1.254.252:50195    (L3VNI 50195)
+*>i[2]:[0]:[0]:[48]:[520a.9beb.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.12                       100          0 i
+*>l[2]:[0]:[0]:[48]:[5261.beee.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.252                      100      32768 i
+*>i[2]:[0]:[0]:[48]:[52b6.3045.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.14                       100          0 i
+*>i[2]:[0]:[0]:[48]:[52dc.572c.1b08]:[0]:[0.0.0.0]/216
+                      10.1.254.16                       100          0 i
+*>l[5]:[0]:[0]:[24]:[10.1.10.0]/224
+                      10.1.254.252            81        100      32768 ?
+*>l[5]:[0]:[0]:[24]:[10.1.20.0]/224
+                      10.1.254.252            81        100      32768 ?
+*>l[5]:[0]:[0]:[24]:[10.1.30.0]/224
+                      10.1.254.252            81        100      32768 ?
+*>l[5]:[0]:[0]:[24]:[10.1.40.0]/224
+                      10.1.254.252            81        100      32768 ?
+*>l[5]:[0]:[0]:[24]:[192.168.1.0]/224
+                      10.1.254.252            41        100      32768 ?
+*>l[5]:[0]:[0]:[24]:[192.168.2.0]/224
+                      10.1.254.252            41        100      32768 ?
+*>l[5]:[0]:[0]:[31]:[192.168.192.0]/224
+                      10.1.254.252            41        100      32768 ?
+*>l[5]:[0]:[0]:[31]:[192.168.192.4]/224
+                      10.1.254.252            41        100      32768 ?
+*>l[5]:[0]:[0]:[31]:[192.168.192.8]/224
+                      10.1.254.252            60        100      32768 ?
+*>l[5]:[0]:[0]:[31]:[192.168.192.12]/224
+                      10.1.254.252            60        100      32768 ?
+*>l[5]:[0]:[0]:[32]:[192.168.255.1]/224
+                      10.1.254.252            41        100      32768 ?
+*>l[5]:[0]:[0]:[32]:[192.168.255.2]/224
+                      10.1.254.252            41        100      32768 ?
+*>l[5]:[0]:[0]:[32]:[192.168.255.255]/224
+                      10.1.254.252            21        100      32768 ?
+
+DC-BB-01B# show ip route vrf vrf_DC-FE
+IP Route Table for VRF "vrf_DC-FE"
+'*' denotes best ucast next-hop
+'**' denotes best mcast next-hop
+'[x/y]' denotes [preference/metric]
+'%<string>' in via output denotes VRF <string>
+
+10.1.10.0/24, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+10.1.20.0/24, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+10.1.30.0/24, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+10.1.40.0/24, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+10.1.50.0/24, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+10.1.192.0/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.192.2/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.192.4/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.192.6/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.192.10/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.192.12/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.192.14/31, ubest/mbest: 1/0, attached
+    *via 10.1.192.14, Eth1/11.192, [0/0], 4d01h, direct
+10.1.192.14/32, ubest/mbest: 1/0, attached
+    *via 10.1.192.14, Eth1/11.192, [0/0], 4d01h, local
+10.1.192.16/31, ubest/mbest: 1/0, attached
+    *via 10.1.192.16, Eth1/12.192, [0/0], 4d01h, direct
+10.1.192.16/32, ubest/mbest: 1/0, attached
+    *via 10.1.192.16, Eth1/12.192, [0/0], 4d01h, local
+10.1.192.250/31, ubest/mbest: 1/0, attached
+    *via 10.1.192.251, Po47.192, [0/0], 4d00h, direct
+10.1.192.251/32, ubest/mbest: 1/0, attached
+    *via 10.1.192.251, Po47.192, [0/0], 4d00h, local
+10.1.193.0/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.193.2/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.193.4/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.193.6/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.193.10/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.193.12/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.193.14/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.193.16/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.194.0/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.194.2/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.194.4/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.194.6/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.194.10/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.194.12/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.194.14/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.194.16/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.195.0/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.195.2/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.195.4/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.195.6/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.195.10/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.195.12/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.195.14/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.195.16/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.195.240/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+10.1.195.242/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+10.1.195.244/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+10.1.195.250/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/61], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/61], 03:43:59, ospf-DC, intra
+10.1.195.252/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.255.212/32, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/42], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/42], 03:43:59, ospf-DC, intra
+10.1.255.213/32, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/42], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/42], 03:43:59, ospf-DC, intra
+10.1.255.214/32, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/42], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/42], 03:43:59, ospf-DC, intra
+10.1.255.215/32, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/42], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/42], 03:43:59, ospf-DC, intra
+10.1.255.231/32, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 03:43:59, ospf-DC, intra
+10.1.255.232/32, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 03:43:59, ospf-DC, intra
+192.168.1.0/24, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/82], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/82], 03:43:59, ospf-DC, intra
+192.168.2.0/24, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/82], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/82], 03:43:59, ospf-DC, intra
+192.168.192.0/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+192.168.192.2/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+192.168.192.4/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+192.168.192.6/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+192.168.192.8/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+192.168.192.10/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+192.168.192.12/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+192.168.192.14/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+192.168.192.250/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+192.168.192.252/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+192.168.192.254/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 03:43:59, ospf-DC, intra
+192.168.255.1/32, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/82], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/82], 03:43:59, ospf-DC, intra
+192.168.255.2/32, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/82], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/82], 03:43:59, ospf-DC, intra
+192.168.255.254/32, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/42], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/42], 03:43:59, ospf-DC, intra
+192.168.255.255/32, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/42], 03:43:59, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/42], 03:43:59, ospf-DC, intra
+
+DC-BB-01B# show ip route vrf vrf_DC-DB
+IP Route Table for VRF "vrf_DC-DB"
+'*' denotes best ucast next-hop
+'**' denotes best mcast next-hop
+'[x/y]' denotes [preference/metric]
+'%<string>' in via output denotes VRF <string>
+
+10.1.10.0/24, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+10.1.20.0/24, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+10.1.30.0/24, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+10.1.40.0/24, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+10.1.50.0/24, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+10.1.192.0/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.192.2/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.192.4/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.192.6/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.192.10/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.192.12/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.192.14/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.192.16/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.193.0/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.193.2/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.193.4/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.193.6/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.193.10/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.193.12/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.193.14/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.193.16/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.194.0/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.194.2/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.194.4/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.194.6/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.194.10/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.194.12/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.194.14/31, ubest/mbest: 1/0, attached
+    *via 10.1.194.14, Eth1/11.194, [0/0], 4d01h, direct
+10.1.194.14/32, ubest/mbest: 1/0, attached
+    *via 10.1.194.14, Eth1/11.194, [0/0], 4d01h, local
+10.1.194.16/31, ubest/mbest: 1/0, attached
+    *via 10.1.194.16, Eth1/12.194, [0/0], 4d01h, direct
+10.1.194.16/32, ubest/mbest: 1/0, attached
+    *via 10.1.194.16, Eth1/12.194, [0/0], 4d01h, local
+10.1.194.250/31, ubest/mbest: 1/0, attached
+    *via 10.1.194.251, Po47.194, [0/0], 4d00h, direct
+10.1.194.251/32, ubest/mbest: 1/0, attached
+    *via 10.1.194.251, Po47.194, [0/0], 4d00h, local
+10.1.195.0/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.195.2/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.195.4/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.195.6/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.195.10/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.195.12/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.195.14/31, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.195.16/31, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.195.240/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+10.1.195.242/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+10.1.195.244/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+10.1.195.250/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/61], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/61], 03:44:05, ospf-DC, intra
+10.1.195.252/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.255.212/32, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/42], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/42], 03:44:05, ospf-DC, intra
+10.1.255.213/32, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/42], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/42], 03:44:05, ospf-DC, intra
+10.1.255.214/32, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/42], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/42], 03:44:05, ospf-DC, intra
+10.1.255.215/32, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/42], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/42], 03:44:05, ospf-DC, intra
+10.1.255.231/32, ubest/mbest: 1/0
+    *via 10.1.194.15, Eth1/11.194, [110/41], 03:44:05, ospf-DC, intra
+10.1.255.232/32, ubest/mbest: 1/0
+    *via 10.1.194.17, Eth1/12.194, [110/41], 03:44:05, ospf-DC, intra
+192.168.1.0/24, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/82], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/82], 03:44:05, ospf-DC, intra
+192.168.2.0/24, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/82], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/82], 03:44:05, ospf-DC, intra
+192.168.192.0/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+192.168.192.2/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+192.168.192.4/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+192.168.192.6/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+192.168.192.8/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+192.168.192.10/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+192.168.192.12/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+192.168.192.14/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+192.168.192.250/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+192.168.192.252/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+192.168.192.254/31, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/81], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/81], 03:44:05, ospf-DC, intra
+192.168.255.1/32, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/82], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/82], 03:44:05, ospf-DC, intra
+192.168.255.2/32, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/82], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/82], 03:44:05, ospf-DC, intra
+192.168.255.254/32, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/42], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/42], 03:44:05, ospf-DC, intra
+192.168.255.255/32, ubest/mbest: 2/0
+    *via 10.1.194.15, Eth1/11.194, [110/42], 03:44:05, ospf-DC, intra
+    *via 10.1.194.17, Eth1/12.194, [110/42], 03:44:05, ospf-DC, intra
+
+```	
+</details>
+
+#### 1.3. Узлы доступа плеча «B» (DC-ACC-01B, DC-ACC-02B, DC-ACC-03B) — Проверка готовности шлюзов и VTEP
+<details>
+<summary>На примере DC-ACC-01B.</summary>
+
+```eos
+DC-ACC-01B# show nve peers
+Interface Peer-IP                                 State LearnType Uptime   Route
+r-Mac
+--------- --------------------------------------  ----- --------- -------- -----
+------------
+nve1      10.1.254.14                             Up    CP        03:23:35 52b6.
+3045.1b08
+nve1      10.1.254.16                             Up    CP        03:23:35 52dc.
+572c.1b08
+nve1      10.1.254.242                            Up    CP        03:23:35 n/a
+nve1      10.1.254.243                            Up    CP        03:23:35 n/a
+nve1      10.1.254.250                            Up    CP        03:23:35 n/a
+nve1      10.1.254.252                            Up    CP        03:23:35 5261.
+beee.1b08
+
+DC-ACC-01B# show nve vni
+Codes: CP - Control Plane        DP - Data Plane
+       UC - Unconfigured         SA - Suppress ARP
+       S-ND - Suppress ND
+       SU - Suppress Unknown Unicast
+       Xconn - Crossconnect
+       MS-IR - Multisite Ingress Replication
+       HYB - Hybrid IRB mode
+
+Interface VNI      Multicast-group   State Mode Type [BD/VRF]      Flags
+--------- -------- ----------------- ----- ---- ------------------ -----
+nve1      10010    UnicastBGP        Up    CP   L2 [10]            SA
+nve1      10020    UnicastBGP        Up    CP   L2 [20]            SA
+nve1      10030    UnicastBGP        Up    CP   L2 [30]            SA
+nve1      10040    UnicastBGP        Up    CP   L2 [40]            SA
+nve1      10050    UnicastBGP        Up    CP   L2 [50]            SA
+nve1      50192    n/a               Up    CP   L3 [vrf_DC-FE]
+nve1      50193    n/a               Up    CP   L3 [vrf_DC-BE]
+nve1      50194    n/a               Up    CP   L3 [vrf_DC-DB]
+nve1      50195    n/a               Up    CP   L3 [vrf_DC-CORP]
+
+DC-ACC-01B#  show ip interface brief vrf all
+
+IP Interface Status for VRF "default"(1)
+Interface            IP Address      Interface Status
+Lo0                  10.1.255.12     protocol-up/link-up/admin-up
+Lo1                  10.1.254.12     protocol-up/link-up/admin-up
+Eth1/62              10.1.242.3      protocol-up/link-up/admin-up
+
+IP Interface Status for VRF "management"(2)
+Interface            IP Address      Interface Status
+mgmt0                192.168.0.2     protocol-down/link-down/admin-down
+
+IP Interface Status for VRF "egress-loadbalance-resolution-"(3)
+Interface            IP Address      Interface Status
+
+IP Interface Status for VRF "keepalive"(4)
+Interface            IP Address      Interface Status
+
+IP Interface Status for VRF "vrf_DC-BE"(5)
+Interface            IP Address      Interface Status
+Vlan20               10.1.20.1       protocol-down/link-down/admin-down
+Vlan30               10.1.30.1       protocol-down/link-down/admin-down
+Vlan1193             forward-enabled protocol-up/link-up/admin-up
+
+IP Interface Status for VRF "vrf_DC-CORP"(6)
+Interface            IP Address      Interface Status
+Vlan50               10.1.50.1       protocol-down/link-down/admin-down
+Vlan1195             forward-enabled protocol-up/link-up/admin-up
+
+IP Interface Status for VRF "vrf_DC-DB"(7)
+Interface            IP Address      Interface Status
+Vlan40               10.1.40.1       protocol-down/link-down/admin-down
+Vlan1194             forward-enabled protocol-up/link-up/admin-up
+
+IP Interface Status for VRF "vrf_DC-FE"(8)
+Interface            IP Address      Interface Status
+Vlan10               10.1.10.1       protocol-down/link-down/admin-down
+Vlan1192             forward-enabled protocol-up/link-up/admin-up
+
+DC-ACC-01B#  show bgp l2vpn evpn summary
+BGP summary information for VRF default, address family L2VPN EVPN
+BGP router identifier 10.1.255.12, local AS number 65001
+BGP table version is 2738, L2VPN EVPN config peers 1, capable peers 1
+111 network entries and 111 paths using 35100 bytes of memory
+BGP attribute entries [77/28336], BGP AS path entries [0/0]
+BGP community entries [0/0], BGP clusterlist entries [3/12]
+
+Neighbor        V    AS    MsgRcvd    MsgSent   TblVer  InQ OutQ Up/Down  State/
+PfxRcd
+10.1.255.2      4 65001       6849       6554     2738    0    0 03:23:55 51
+
+Neighbor        T    AS Type-1     Type-2     Type-3     Type-4     Type-5     T
+ype-6     Type-7     Type-8     Type-12
+10.1.255.2      I 65001 0          12         15         0          24         0
+          0          0          0
+
+```	
+</details>
+
+#### 1.4. Проверка отсутствия влияния на продуктивный трафик (плечо «A» и временный мост)
+
+<details>
+<summary>Выполняется непрерывным пингом на протяжении всего Этапа 1:</summary>
+
+```eos
+Поток 1 (Intra-VLAN East–West, VLAN 10): на HOST_3-1_VL10 (10.1.10.12)
+ping 10.1.10.11 source 10.1.10.12 repeat 5000 size 1400 df-bit timeout 1
+
+Поток 2 (Intra-VRF Inter-VLAN, VLAN 20 ↔ VLAN 30 внутри vrf_DC-BE): на HOST_1-2_VL20 (10.1.20.11)
+ping 10.1.30.11 source 10.1.20.11 repeat 5000 size 1400 df-bit timeout 1
+
+Поток 3 (Inter-VRF через МСЭ DC-EXT, vrf_DC-FE ↔ vrf_DC-DB): на HOST_1-1_VL10 (10.1.10.11)
+ping 10.1.40.11 source 10.1.10.11 repeat 5000 size 1400 df-bit timeout 1
+
+Поток 4 (North–South Branch, филиал BRANCH_1 ↔ ЦОД): на BRANCH_1 (192.168.255.1)
+ping 10.1.10.11 source loopback 0 repeat 5000 size 1400 df-bit timeout 1
+
+```	
+</details>
+
+
+### Этап 2.
+
+#### 2.1. Замеры влияния на продуктивный трафик во время выполнения этапа
 
 <details>
 <summary>Применяем набор команд</summary>
 
 ```eos
-...
+Поток 1 (Intra-VLAN East–West, VLAN 10): на HOST_3-1_VL10 (10.1.10.12)
+ping 10.1.10.11 source 10.1.10.12 repeat 5000 size 1400 df-bit timeout 1
+Type escape sequence to abort.
+Sending 5000, 1400-byte ICMP Echos to 10.1.10.11, timeout is 1 seconds:
+Packet sent with a source address of 10.1.10.12
+Packet sent with the DF bit set
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+.....
+*Nov 25 21:02:26.582: %EC-5-MINLINKS_NOTMET: Port-channel Port-channel1 is down bundled ports (0) doesn't meet min-links.
+*Nov 25 21:02:26.592: GigabitEthernet1 taken out of port-channel1
+..
+*Nov 25 21:02:28.592: %LINK-3-UPDOWN: Interface Port-channel1, changed state to down.
+*Nov 25 21:02:29.592: %LINEPROTO-5-UPDOWN: Line protocol on Interface Port-channel1, changed state to down................
+*Nov 25 21:02:46.434: %EC-5-MINLINKS_MET: Port-channel Port-channel1 is up as its bundled ports (1) meets min-links.
+*Nov 25 21:02:46.445: GigabitEthernet2 added as member-1 to port-channel1
+ ..
+*Nov 25 21:02:48.445: %LINK-3-UPDOWN: Interface Port-channel1, changed state to up.
+*Nov 25 21:02:49.445: %LINEPROTO-5-UPDOWN: Line protocol on Interface Port-channel1, changed state to up. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!.
+Success rate is 99 percent (2665/2696), round-trip min/avg/max = 5/12/131 ms
+HOST_3-1_VL10_10.1.10.12#
+
+Поток 2 (Intra-VRF Inter-VLAN, VLAN 20 ↔ VLAN 30 внутри vrf_DC-BE): на HOST_1-2_VL20 (10.1.20.11)
+ping 10.1.30.11 source 10.1.20.11 repeat 5000 size 1400 df-bit timeout 1
+Type escape sequence to abort.
+Sending 5000, 1400-byte ICMP Echos to 10.1.30.11, timeout is 1 seconds:
+Packet sent with a source address of 10.1.20.11
+Packet sent with the DF bit set
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+*Nov 25 21:02:21.597: %EC-5-MINLINKS_NOTMET: Port-channel Port-channel1 is down bundled ports (0) doesn't meet min-links.
+*Nov 25 21:02:21.619: GigabitEthernet1 taken out of port-channel1
+..
+*Nov 25 21:02:23.620: %LINK-3-UPDOWN: Interface Port-channel1, changed state to down.
+*Nov 25 21:02:24.620: %LINEPROTO-5-UPDOWN: Line protocol on Interface Port-channel1, changed state to down........................
+*Nov 25 21:02:49.431: %EC-5-MINLINKS_MET: Port-channel Port-channel1 is up as its bundled ports (1) meets min-links.
+*Nov 25 21:02:49.450: GigabitEthernet2 added as member-1 to port-channel1
+ ..!!!!!!!!!!!!!!!!!!!!!!!!
+*Nov 25 21:02:51.450: %LINK-3-UPDOWN: Interface Port-channel1, changed state to up!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+*Nov 25 21:02:52.451: %LINEPROTO-5-UPDOWN: Line protocol on Interface Port-channel1, changed state to up!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Success rate is 99 percent (4969/5000), round-trip min/avg/max = 2/4/165 ms
+HOST_1-2_VL20_10.1.20.11#
+
+Поток 3 (Inter-VRF через МСЭ DC-EXT, vrf_DC-FE ↔ vrf_DC-DB): на HOST_1-1_VL10 (10.1.10.11)
+ping 10.1.40.11 source 10.1.10.11 repeat 5000 size 1400 df-bit timeout 1
+Type escape sequence to abort.
+Sending 5000, 1400-byte ICMP Echos to 10.1.40.11, timeout is 1 seconds:
+Packet sent with a source address of 10.1.10.11
+Packet sent with the DF bit set
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!! !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!! !!!!!.....................
+*Nov 25 21:03:43.991: %EC-5-MINLINKS_NOTMET: Port-channel Port-channel1 is down bundled ports (0) doesn't meet min-links.
+*Nov 25 21:03:43.994: GigabitEthernet1 taken out of port-channel1
+..
+*Nov 25 21:03:45.994: %LINK-3-UPDOWN: Interface Port-channel1, changed state to down.
+*Nov 25 21:03:46.997: %LINEPROTO-5-UPDOWN: Line protocol on Interface Port-channel1, changed state to down..
+*Nov 25 21:03:49.861: %EC-5-MINLINKS_MET: Port-channel Port-channel1 is up as its bundled ports (1) meets min-links.
+*Nov 25 21:03:49.864: GigabitEthernet2 added as member-1 to port-channel1
+
+*Nov 25 21:03:50.884: %EC-5-MINLINKS_NOTMET: Port-channel Port-channel1 is down bundled ports (0) doesn't meet min-links.
+*Nov 25 21:03:50.887: GigabitEthernet2 taken out of port-channel1
+.
+*Nov 25 21:03:52.898: %EC-5-MINLINKS_MET: Port-channel Port-channel1 is up as its bundled ports (1) meets min-links.
+*Nov 25 21:03:52.901: GigabitEthernet2 added as member-1 to port-channel1
+ ..!!!!!!
+*Nov 25 21:03:54.907: %LINK-3-UPDOWN: Interface Port-channel1, changed state to up!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!
+*Nov 25 21:03:55.908: %LINEPROTO-5-UPDOWN: Line protocol on Interface Port-channel1, changed state to up!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!.
+Success rate is 96 percent (908/942), round-trip min/avg/max = 9/30/231 ms
+HOST_1-1_VL10_10.1.10.11#
+
+Поток 4 (North–South Branch, филиал BRANCH_1 ↔ ЦОД): на BRANCH_1 (192.168.255.1)
+ping 10.1.10.11 source loopback 0 repeat 5000 size 1400 df-bit timeout 1
+BRANCH_1#$0.11 source loopback 0 repeat 5000 size 1400 df-bit timeout 1
+Type escape sequence to abort.
+Sending 5000, 1400-byte ICMP Echos to 10.1.10.11, timeout is 1 seconds:
+Packet sent with a source address of 192.168.255.1
+Packet sent with the DF bit set
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!..........
+.........................!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!.
+Success rate is 97 percent (1081/1116), round-trip min/avg/max = 9/21/80 ms
+
+```	
+</details>
+
+#### 2.2. Проверка работы Control Plane и Data Plane на фабрике VXLAN EVPN (плечо «B», на примере DC-ACC-01B)
+
+<details>
+<summary>Вывод команд диагностики</summary>
+
+```eos
+DC-ACC-01B# show ip interface brief vrf all
+IP Interface Status for VRF "default"(1)
+Interface            IP Address      Interface Status
+Lo0                  10.1.255.12     protocol-up/link-up/admin-up
+Lo1                  10.1.254.12     protocol-up/link-up/admin-up
+Eth1/62              10.1.242.3      protocol-up/link-up/admin-up
+
+IP Interface Status for VRF "management"(2)
+Interface            IP Address      Interface Status
+mgmt0                192.168.0.2     protocol-down/link-down/admin-down
+
+IP Interface Status for VRF "egress-loadbalance-resolution-"(3)
+Interface            IP Address      Interface Status
+
+IP Interface Status for VRF "keepalive"(4)
+Interface            IP Address      Interface Status
+
+IP Interface Status for VRF "vrf_DC-BE"(5)
+Interface            IP Address      Interface Status
+Vlan20               10.1.20.1       protocol-up/link-up/admin-up
+Vlan30               10.1.30.1       protocol-up/link-up/admin-up
+Vlan1193             forward-enabled protocol-up/link-up/admin-up
+
+IP Interface Status for VRF "vrf_DC-CORP"(6)
+Interface            IP Address      Interface Status
+Vlan50               10.1.50.1       protocol-up/link-up/admin-up
+Vlan1195             forward-enabled protocol-up/link-up/admin-up
+
+IP Interface Status for VRF "vrf_DC-DB"(7)
+Interface            IP Address      Interface Status
+Vlan40               10.1.40.1       protocol-up/link-up/admin-up
+Vlan1194             forward-enabled protocol-up/link-up/admin-up
+
+IP Interface Status for VRF "vrf_DC-FE"(8)
+Interface            IP Address      Interface Status
+Vlan10               10.1.10.1       protocol-up/link-up/admin-up
+Vlan1192             forward-enabled protocol-up/link-up/admin-up
+DC-ACC-01B#
+
+DC-ACC-01B# show port-channel summary
+Flags:  D - Down        P - Up in port-channel (members)
+        I - Individual  H - Hot-standby (LACP only)
+        s - Suspended   r - Module-removed
+        b - BFD Session Wait
+        S - Switched    R - Routed
+        U - Up (port-channel)
+        p - Up in delay-lacp mode (member)
+        M - Not in use. Min-links not met
+--------------------------------------------------------------------------------
+Group Port-       Type     Protocol  Member Ports
+      Channel
+--------------------------------------------------------------------------------
+1     Po1(SU)     Eth      LACP      Eth1/1(P)
+2     Po2(SU)     Eth      LACP      Eth1/2(P)
+3     Po3(SU)     Eth      LACP      Eth1/3(P)
+63    Po63(SD)    Eth      LACP      Eth1/63(D)   Eth1/64(D)
+DC-ACC-01B#
+
+DC-ACC-01B# show bgp l2vpn evpn route-type 2
+BGP routing table information for VRF default, address family L2VPN EVPN
+Route Distinguisher: 10.1.254.12:10010    (L2VNI 10010)
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.1426.abc0]:[0]:[0.0.0.0]/216,
+ version 5295
+Paths: (1 available, best #1)
+Flags: (0x000212) (high32 00000000) on xmit-list, is in l2rib/evpn, is not in HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop, in rib
+             Imported from 10.1.254.16:10010:[2]:[0]:[0]:[48]:[001e.1426.abc0]:[
+0]:[0.0.0.0]/216
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.16 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10010
+      Extcommunity: RT:65001:10010 ENCAP:8
+      Originator: 10.1.255.16 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.bd27.28c0]:[0]:[0.0.0.0]/216,
+ version 5307
+Paths: (1 available, best #1)
+Flags: (0x000102) (high32 00000000) on xmit-list, is not in l2rib/evpn
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: local, path is valid, is best path, no labeled nexthop
+  AS-Path: NONE, path locally originated
+    10.1.254.12 (metric 0) from 0.0.0.0 (10.1.255.12)
+      Origin IGP, MED not set, localpref 100, weight 32768
+      Received label 10010
+      Extcommunity: RT:65001:10010 ENCAP:8
+
+  Path-id 1 advertised to peers:
+    10.1.255.2
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.1426.abc0]:[32]:[10.1.10.12]/
+272, version 5289
+Paths: (1 available, best #1)
+Flags: (0x000212) (high32 00000000) on xmit-list, is in l2rib/evpn, is not in HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop, in rib
+             Imported from 10.1.254.16:10010:[2]:[0]:[0]:[48]:[001e.1426.abc0]:[
+32]:[10.1.10.12]/272
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.16 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10010 50192
+      Extcommunity: RT:65001:10010 RT:65001:50192 ENCAP:8 Router MAC:52dc.572c.1
+b08
+      Originator: 10.1.255.16 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.bd27.28c0]:[32]:[10.1.10.11]/
+272, version 5306
+Paths: (1 available, best #1)
+Flags: (0x000102) (high32 00000000) on xmit-list, is not in l2rib/evpn
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: local, path is valid, is best path, no labeled nexthop
+  AS-Path: NONE, path locally originated
+    10.1.254.12 (metric 0) from 0.0.0.0 (10.1.255.12)
+      Origin IGP, MED not set, localpref 100, weight 32768
+      Received label 10010 50192
+      Extcommunity: RT:65001:10010 RT:65001:50192 ENCAP:8 Router MAC:520a.9beb.1
+b08
+
+  Path-id 1 advertised to peers:
+    10.1.255.2
+
+Route Distinguisher: 10.1.254.12:10020    (L2VNI 10020)
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.e6c6.95c0]:[0]:[0.0.0.0]/216,
+ version 5304
+Paths: (1 available, best #1)
+Flags: (0x000102) (high32 00000000) on xmit-list, is not in l2rib/evpn
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: local, path is valid, is best path, no labeled nexthop
+  AS-Path: NONE, path locally originated
+    10.1.254.12 (metric 0) from 0.0.0.0 (10.1.255.12)
+      Origin IGP, MED not set, localpref 100, weight 32768
+      Received label 10020
+      Extcommunity: RT:65001:10020 ENCAP:8
+
+  Path-id 1 advertised to peers:
+    10.1.255.2
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.f6f4.2ec0]:[0]:[0.0.0.0]/216,
+ version 5296
+Paths: (1 available, best #1)
+Flags: (0x000212) (high32 00000000) on xmit-list, is in l2rib/evpn, is not in HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop, in rib
+             Imported from 10.1.254.16:10020:[2]:[0]:[0]:[48]:[001e.f6f4.2ec0]:[
+0]:[0.0.0.0]/216
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.16 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10020
+      Extcommunity: RT:65001:10020 ENCAP:8
+      Originator: 10.1.255.16 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.e6c6.95c0]:[32]:[10.1.20.11]/
+272, version 5302
+Paths: (1 available, best #1)
+Flags: (0x000102) (high32 00000000) on xmit-list, is not in l2rib/evpn
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: local, path is valid, is best path, no labeled nexthop
+  AS-Path: NONE, path locally originated
+    10.1.254.12 (metric 0) from 0.0.0.0 (10.1.255.12)
+      Origin IGP, MED not set, localpref 100, weight 32768
+      Received label 10020 50193
+      Extcommunity: RT:65001:10020 RT:65001:50193 ENCAP:8 Router MAC:520a.9beb.1
+b08
+
+  Path-id 1 advertised to peers:
+    10.1.255.2
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.f6f4.2ec0]:[32]:[10.1.20.12]/
+272, version 5291
+Paths: (1 available, best #1)
+Flags: (0x000212) (high32 00000000) on xmit-list, is in l2rib/evpn, is not in HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop, in rib
+             Imported from 10.1.254.16:10020:[2]:[0]:[0]:[48]:[001e.f6f4.2ec0]:[
+32]:[10.1.20.12]/272
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.16 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10020 50193
+      Extcommunity: RT:65001:10020 RT:65001:50193 ENCAP:8 Router MAC:52dc.572c.1
+b08
+      Originator: 10.1.255.16 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+
+Route Distinguisher: 10.1.254.12:10030    (L2VNI 10030)
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.bd91.88c0]:[0]:[0.0.0.0]/216,
+ version 5305
+Paths: (1 available, best #1)
+Flags: (0x000102) (high32 00000000) on xmit-list, is not in l2rib/evpn
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: local, path is valid, is best path, no labeled nexthop
+  AS-Path: NONE, path locally originated
+    10.1.254.12 (metric 0) from 0.0.0.0 (10.1.255.12)
+      Origin IGP, MED not set, localpref 100, weight 32768
+      Received label 10030
+      Extcommunity: RT:65001:10030 ENCAP:8
+
+  Path-id 1 advertised to peers:
+    10.1.255.2
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.bd91.88c0]:[32]:[10.1.30.11]/
+272, version 5303
+Paths: (1 available, best #1)
+Flags: (0x000102) (high32 00000000) on xmit-list, is not in l2rib/evpn
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: local, path is valid, is best path, no labeled nexthop
+  AS-Path: NONE, path locally originated
+    10.1.254.12 (metric 0) from 0.0.0.0 (10.1.255.12)
+      Origin IGP, MED not set, localpref 100, weight 32768
+      Received label 10030 50193
+      Extcommunity: RT:65001:10030 RT:65001:50193 ENCAP:8 Router MAC:520a.9beb.1
+b08
+
+  Path-id 1 advertised to peers:
+    10.1.255.2
+
+Route Distinguisher: 10.1.254.12:10040    (L2VNI 10040)
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.e643.05c0]:[0]:[0.0.0.0]/216,
+ version 5301
+Paths: (1 available, best #1)
+Flags: (0x000212) (high32 00000000) on xmit-list, is in l2rib/evpn, is not in HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop, in rib
+             Imported from 10.1.254.14:10040:[2]:[0]:[0]:[48]:[001e.e643.05c0]:[
+0]:[0.0.0.0]/216
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.14 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10040
+      Extcommunity: RT:65001:10040 ENCAP:8
+      Originator: 10.1.255.14 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.e643.05c0]:[32]:[10.1.40.11]/
+272, version 5298
+Paths: (1 available, best #1)
+Flags: (0x000212) (high32 00000000) on xmit-list, is in l2rib/evpn, is not in HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop, in rib
+             Imported from 10.1.254.14:10040:[2]:[0]:[0]:[48]:[001e.e643.05c0]:[
+32]:[10.1.40.11]/272
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.14 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10040 50194
+      Extcommunity: RT:65001:10040 RT:65001:50194 ENCAP:8 Router MAC:52b6.3045.1
+b08
+      Originator: 10.1.255.14 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+
+Route Distinguisher: 10.1.254.14:10040
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.e643.05c0]:[0]:[0.0.0.0]/216,
+ version 5300
+Paths: (1 available, best #1)
+Flags: (0x000202) (high32 00000000) on xmit-list, is not in l2rib/evpn, is not i
+n HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop
+             Imported to 1 destination(s)
+             Imported paths list: L2-10040
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.14 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10040
+      Extcommunity: RT:65001:10040 ENCAP:8
+      Originator: 10.1.255.14 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.e643.05c0]:[32]:[10.1.40.11]/
+272, version 5297
+Paths: (1 available, best #1)
+Flags: (0x000202) (high32 00000000) on xmit-list, is not in l2rib/evpn, is not i
+n HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop
+             Imported to 3 destination(s)
+             Imported paths list: vrf_DC-DB L3-50194 L2-10040
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.14 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10040 50194
+      Extcommunity: RT:65001:10040 RT:65001:50194 ENCAP:8 Router MAC:52b6.3045.1
+b08
+      Originator: 10.1.255.14 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+
+Route Distinguisher: 10.1.254.16:10010
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.1426.abc0]:[0]:[0.0.0.0]/216,
+ version 5293
+Paths: (1 available, best #1)
+Flags: (0x000202) (high32 00000000) on xmit-list, is not in l2rib/evpn, is not i
+n HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop
+             Imported to 1 destination(s)
+             Imported paths list: L2-10010
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.16 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10010
+      Extcommunity: RT:65001:10010 ENCAP:8
+      Originator: 10.1.255.16 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.1426.abc0]:[32]:[10.1.10.12]/
+272, version 5287
+Paths: (1 available, best #1)
+Flags: (0x000202) (high32 00000000) on xmit-list, is not in l2rib/evpn, is not i
+n HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop
+             Imported to 3 destination(s)
+             Imported paths list: vrf_DC-FE L3-50192 L2-10010
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.16 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10010 50192
+      Extcommunity: RT:65001:10010 RT:65001:50192 ENCAP:8 Router MAC:52dc.572c.1
+b08
+      Originator: 10.1.255.16 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+
+Route Distinguisher: 10.1.254.16:10020
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.f6f4.2ec0]:[0]:[0.0.0.0]/216,
+ version 5294
+Paths: (1 available, best #1)
+Flags: (0x000202) (high32 00000000) on xmit-list, is not in l2rib/evpn, is not i
+n HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop
+             Imported to 1 destination(s)
+             Imported paths list: L2-10020
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.16 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10020
+      Extcommunity: RT:65001:10020 ENCAP:8
+      Originator: 10.1.255.16 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.f6f4.2ec0]:[32]:[10.1.20.12]/
+272, version 5288
+Paths: (1 available, best #1)
+Flags: (0x000202) (high32 00000000) on xmit-list, is not in l2rib/evpn, is not i
+n HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop
+             Imported to 3 destination(s)
+             Imported paths list: vrf_DC-BE L3-50193 L2-10020
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.16 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10020 50193
+      Extcommunity: RT:65001:10020 RT:65001:50193 ENCAP:8 Router MAC:52dc.572c.1
+b08
+      Originator: 10.1.255.16 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+
+Route Distinguisher: 10.1.254.12:50192    (L3VNI 50192)
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.1426.abc0]:[32]:[10.1.10.12]/
+272, version 5290
+Paths: (1 available, best #1)
+Flags: (0x000202) (high32 00000000) on xmit-list, is not in l2rib/evpn, is not i
+n HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop
+             Imported from 10.1.254.16:10010:[2]:[0]:[0]:[48]:[001e.1426.abc0]:[
+32]:[10.1.10.12]/272
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.16 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10010 50192
+      Extcommunity: RT:65001:10010 RT:65001:50192 ENCAP:8 Router MAC:52dc.572c.1
+b08
+      Originator: 10.1.255.16 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+
+Route Distinguisher: 10.1.254.12:50193    (L3VNI 50193)
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.f6f4.2ec0]:[32]:[10.1.20.12]/
+272, version 5292
+Paths: (1 available, best #1)
+Flags: (0x000202) (high32 00000000) on xmit-list, is not in l2rib/evpn, is not i
+n HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop
+             Imported from 10.1.254.16:10020:[2]:[0]:[0]:[48]:[001e.f6f4.2ec0]:[
+32]:[10.1.20.12]/272
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.16 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10020 50193
+      Extcommunity: RT:65001:10020 RT:65001:50193 ENCAP:8 Router MAC:52dc.572c.1
+b08
+      Originator: 10.1.255.16 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+
+Route Distinguisher: 10.1.254.12:50194    (L3VNI 50194)
+BGP routing table entry for [2]:[0]:[0]:[48]:[001e.e643.05c0]:[32]:[10.1.40.11]/
+272, version 5299
+Paths: (1 available, best #1)
+Flags: (0x000202) (high32 00000000) on xmit-list, is not in l2rib/evpn, is not i
+n HW
+Multipath: eBGP iBGP
+
+  Advertised path-id 1
+  Path type: internal, path is valid, is best path, no labeled nexthop
+             Imported from 10.1.254.14:10040:[2]:[0]:[0]:[48]:[001e.e643.05c0]:[
+32]:[10.1.40.11]/272
+  AS-Path: NONE, path sourced internal to AS
+    10.1.254.14 (metric 0) from 10.1.255.2 (10.1.255.2)
+      Origin IGP, MED not set, localpref 100, weight 0
+      Received label 10040 50194
+      Extcommunity: RT:65001:10040 RT:65001:50194 ENCAP:8 Router MAC:52b6.3045.1
+b08
+      Originator: 10.1.255.14 Cluster list: 10.1.255.2
+
+  Path-id 1 not advertised to any peer
+
+DC-ACC-01B#
+
+```	
+</details>
+
+#### 2.3. Проверка стыковки пограничного узла с периметром безопасности (DC-BB-01B ↔ DC-EXT)
+<details>
+<summary>Вывод команд диагностики</summary>
+
+```eos
+DC-BB-01B# show ip ospf neighbors vrf all
+ OSPF Process ID DC VRF vrf_DC-BE
+ Total number of neighbors: 3
+ Neighbor ID     Pri State            Up Time  Address         Interface
+ 10.1.255.203      1 FULL/ -          01:48:26 10.1.193.250    Po47.193
+ 10.1.255.231      1 FULL/ -          01:54:32 10.1.193.15     Eth1/11.193
+ 10.1.255.232      1 FULL/ -          01:54:32 10.1.193.17     Eth1/12.193
+ OSPF Process ID DC VRF vrf_DC-DB
+ Total number of neighbors: 3
+ Neighbor ID     Pri State            Up Time  Address         Interface
+ 10.1.255.205      1 FULL/ -          01:48:26 10.1.194.250    Po47.194
+ 10.1.255.231      1 FULL/ -          01:54:32 10.1.194.15     Eth1/11.194
+ 10.1.255.232      1 FULL/ -          01:54:32 10.1.194.17     Eth1/12.194
+ OSPF Process ID DC VRF vrf_DC-FE
+ Total number of neighbors: 3
+ Neighbor ID     Pri State            Up Time  Address         Interface
+ 10.1.255.201      1 FULL/ -          01:48:26 10.1.192.250    Po47.192
+ 10.1.255.231      1 FULL/ -          01:54:32 10.1.192.15     Eth1/11.192
+ 10.1.255.232      1 FULL/ -          01:54:32 10.1.192.17     Eth1/12.192
+ OSPF Process ID DC VRF vrf_DC-CORP
+ Total number of neighbors: 7
+ Neighbor ID     Pri State            Up Time  Address         Interface
+ 192.168.255.255   1 FULL/ -          01:39:15 10.1.195.250    Po47.195
+ 192.168.255.1     1 FULL/ -          01:39:29 192.168.192.3   Eth1/21
+ 192.168.255.2     1 FULL/ -          01:39:29 192.168.192.7   Eth1/22
+ 192.168.255.255   1 FULL/ -          01:39:15 192.168.192.252 Eth1/61
+ 192.168.255.255   1 FULL/ -          01:39:15 192.168.192.254 Eth1/62
+ 10.1.255.231      1 FULL/ -          01:39:29 10.1.195.15     Eth1/11.195
+ 10.1.255.232      1 FULL/ -          01:39:29 10.1.195.17     Eth1/12.195
+DC-BB-01B#
+
+DC-BB-01B# show ip route vrf vrf_DC-FE
+IP Route Table for VRF "vrf_DC-FE"
+'*' denotes best ucast next-hop
+'**' denotes best mcast next-hop
+'[x/y]' denotes [preference/metric]
+'%<string>' in via output denotes VRF <string>
+
+10.1.10.0/24, ubest/mbest: 1/0, attached
+    *via 10.1.10.1, Vlan10, [0/0], 00:20:06, direct
+10.1.10.1/32, ubest/mbest: 1/0, attached
+    *via 10.1.10.1, Vlan10, [0/0], 00:20:06, local
+10.1.10.11/32, ubest/mbest: 1/0
+    *via 10.1.254.12%default, [200/0], 00:18:55, bgp-65001, internal, tag 65001,
+ segid: 50192 tunnelid: 0xa01fe0c encap: VXLAN
+
+10.1.10.12/32, ubest/mbest: 1/0
+    *via 10.1.254.16%default, [200/0], 00:19:56, bgp-65001, internal, tag 65001,
+ segid: 50192 tunnelid: 0xa01fe10 encap: VXLAN
+
+10.1.20.0/24, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/20], 00:20:06, ospf-DC, type-2
+    *via 10.1.192.17, Eth1/12.192, [110/20], 00:20:06, ospf-DC, type-2
+10.1.30.0/24, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/20], 00:20:06, ospf-DC, type-2
+    *via 10.1.192.17, Eth1/12.192, [110/20], 00:20:06, ospf-DC, type-2
+10.1.40.0/24, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/20], 00:20:06, ospf-DC, type-2
+    *via 10.1.192.17, Eth1/12.192, [110/20], 00:20:06, ospf-DC, type-2
+10.1.50.0/24, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/20], 00:20:06, ospf-DC, type-2
+    *via 10.1.192.17, Eth1/12.192, [110/20], 00:20:06, ospf-DC, type-2
+10.1.192.0/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.192.2/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.192.4/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.192.6/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.192.10/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.192.12/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.192.14/31, ubest/mbest: 1/0, attached
+    *via 10.1.192.14, Eth1/11.192, [0/0], 02:57:24, direct
+10.1.192.14/32, ubest/mbest: 1/0, attached
+    *via 10.1.192.14, Eth1/11.192, [0/0], 02:57:24, local
+10.1.192.16/31, ubest/mbest: 1/0, attached
+    *via 10.1.192.16, Eth1/12.192, [0/0], 02:57:24, direct
+10.1.192.16/32, ubest/mbest: 1/0, attached
+    *via 10.1.192.16, Eth1/12.192, [0/0], 02:57:24, local
+10.1.192.250/31, ubest/mbest: 1/0, attached
+    *via 10.1.192.251, Po47.192, [0/0], 01:48:39, direct
+10.1.192.251/32, ubest/mbest: 1/0, attached
+    *via 10.1.192.251, Po47.192, [0/0], 01:48:39, local
+10.1.193.0/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.193.2/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.193.4/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.193.6/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.193.10/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.193.12/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.193.14/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.193.16/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.193.250/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/61], 01:48:39, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/61], 01:48:39, ospf-DC, intra
+10.1.194.0/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.194.2/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.194.4/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.194.6/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.194.10/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.194.12/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.194.14/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.194.16/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.194.250/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/61], 01:48:39, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/61], 01:48:39, ospf-DC, intra
+10.1.195.0/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.195.2/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.195.4/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.195.6/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.195.10/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.195.12/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.195.14/31, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.195.16/31, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.195.240/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 01:39:18, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 01:39:18, ospf-DC, intra
+10.1.195.242/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/121], 00:20:10, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/121], 00:20:10, ospf-DC, intra
+10.1.195.244/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 01:39:18, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 01:39:18, ospf-DC, intra
+10.1.195.250/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/61], 01:48:39, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/61], 01:48:39, ospf-DC, intra
+10.1.195.252/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.255.215/32, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/82], 00:20:10, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/82], 00:20:10, ospf-DC, intra
+10.1.255.231/32, ubest/mbest: 1/0
+    *via 10.1.192.15, Eth1/11.192, [110/41], 01:48:43, ospf-DC, intra
+10.1.255.232/32, ubest/mbest: 1/0
+    *via 10.1.192.17, Eth1/12.192, [110/41], 01:48:43, ospf-DC, intra
+192.168.1.0/24, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/82], 01:48:43, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/82], 01:48:43, ospf-DC, intra
+192.168.2.0/24, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/82], 01:48:43, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/82], 01:48:43, ospf-DC, intra
+192.168.192.0/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 01:39:18, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 01:39:18, ospf-DC, intra
+192.168.192.2/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 01:39:32, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 01:39:32, ospf-DC, intra
+192.168.192.4/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 01:39:18, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 01:39:18, ospf-DC, intra
+192.168.192.6/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 01:39:32, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 01:39:32, ospf-DC, intra
+192.168.192.8/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 01:39:18, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 01:39:18, ospf-DC, intra
+192.168.192.10/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 01:39:32, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 01:39:32, ospf-DC, intra
+192.168.192.12/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 01:39:18, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 01:39:18, ospf-DC, intra
+192.168.192.14/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 01:39:32, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 01:39:32, ospf-DC, intra
+192.168.192.250/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 01:48:43, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 01:48:43, ospf-DC, intra
+192.168.192.252/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 01:48:43, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 01:48:43, ospf-DC, intra
+192.168.192.254/31, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/81], 01:48:43, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/81], 01:48:43, ospf-DC, intra
+192.168.255.1/32, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/82], 01:48:43, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/82], 01:48:43, ospf-DC, intra
+192.168.255.2/32, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/82], 01:48:43, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/82], 01:48:43, ospf-DC, intra
+192.168.255.254/32, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/42], 01:39:32, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/42], 01:39:32, ospf-DC, intra
+192.168.255.255/32, ubest/mbest: 2/0
+    *via 10.1.192.15, Eth1/11.192, [110/42], 01:39:18, ospf-DC, intra
+    *via 10.1.192.17, Eth1/12.192, [110/42], 01:39:18, ospf-DC, intra
+
+```	
+</details>
+
+### Этап 3.
+
+#### 3.1. Контрольная проверка после 3.6 (show bgp l2vpn evpn summary)
+<details>
+<summary>Вывод команд диагностики</summary>
+
+```eos
+DC-COR-01A# show bgp l2vpn evpn summary
+BGP summary information for VRF default, address family L2VPN EVPN
+BGP router identifier 10.1.255.1, local AS number 65001
+BGP table version is 221, L2VPN EVPN config peers 9, capable peers 8
+194 network entries and 194 paths using 70616 bytes of memory
+BGP attribute entries [83/30544], BGP AS path entries [0/0]
+BGP community entries [0/0], BGP clusterlist entries [0/0]
+
+Neighbor        V    AS    MsgRcvd    MsgSent   TblVer  InQ OutQ Up/Down  State/
+PfxRcd
+10.1.255.11     4 65001        517        520      221    0    0 00:25:34 0
+10.1.255.12     4 65001        176        166      221    0    0 00:07:48 16
+10.1.255.13     4 65001        512        515      221    0    0 00:25:20 0
+10.1.255.14     4 65001        138        132      221    0    0 00:06:05 12
+10.1.255.15     4 65001        513        516      221    0    0 00:25:24 0
+10.1.255.16     4 65001        121        114      221    0    0 00:05:09 14
+10.1.255.251    4 65001        229        199      221    0    0 00:09:41 78
+10.1.255.252    4 65001        116         95      221    0    0 00:04:29 74
+
+Neighbor        T    AS Type-1     Type-2     Type-3     Type-4     Type-5     T
+ype-6     Type-7     Type-8     Type-12
+10.1.255.11     I 65001 0          0          0          0          0          0
+          0          0          0
+10.1.255.12     I 65001 0          6          5          0          5          0
+          0          0          0
+10.1.255.13     I 65001 0          0          0          0          0          0
+          0          0          0
+10.1.255.14     I 65001 0          2          5          0          5          0
+          0          0          0
+10.1.255.15     I 65001 0          0          0          0          0          0
+          0          0          0
+10.1.255.16     I 65001 0          4          5          0          5          0
+          0          0          0
+10.1.255.251    I 65001 0          4          5          0          69         0
+          0          0          0
+10.1.255.252    I 65001 0          0          5          0          69         0
+          0          0          0
+DC-COR-01A#
+
+DC-COR-01B# show bgp l2vpn evpn summary
+BGP summary information for VRF default, address family L2VPN EVPN
+BGP router identifier 10.1.255.2, local AS number 65001
+BGP table version is 5329, L2VPN EVPN config peers 9, capable peers 8
+194 network entries and 194 paths using 70616 bytes of memory
+BGP attribute entries [83/30544], BGP AS path entries [0/0]
+BGP community entries [0/0], BGP clusterlist entries [0/0]
+
+Neighbor        V    AS    MsgRcvd    MsgSent   TblVer  InQ OutQ Up/Down  State/
+PfxRcd
+10.1.255.11     4 65001        829        841     5329    0    0 00:41:12 0
+10.1.255.12     4 65001       5339       5461     5329    0    0 04:19:18 16
+10.1.255.13     4 65001        710        720     5329    0    0 00:35:17 0
+10.1.255.14     4 65001       5278       5468     5329    0    0 04:19:33 12
+10.1.255.15     4 65001        723        733     5329    0    0 00:35:53 0
+10.1.255.16     4 65001       5309       5465     5329    0    0 04:19:39 14
+10.1.255.251    4 65001        260        233     5329    0    0 00:11:08 78
+10.1.255.252    4 65001       6157       5233     5329    0    0 00:18:31 74
+
+Neighbor        T    AS Type-1     Type-2     Type-3     Type-4     Type-5     T
+ype-6     Type-7     Type-8     Type-12
+10.1.255.11     I 65001 0          0          0          0          0          0
+          0          0          0
+10.1.255.12     I 65001 0          6          5          0          5          0
+          0          0          0
+10.1.255.13     I 65001 0          0          0          0          0          0
+          0          0          0
+10.1.255.14     I 65001 0          2          5          0          5          0
+          0          0          0
+10.1.255.15     I 65001 0          0          0          0          0          0
+          0          0          0
+10.1.255.16     I 65001 0          4          5          0          5          0
+          0          0          0
+10.1.255.251    I 65001 0          4          5          0          69         0
+          0          0          0
+10.1.255.252    I 65001 0          0          5          0          69         0
+          0          0          0
+
 ```	
 </details>
 
 
+#### 3.2. Проверка сборки парных доменов vPC VXLAN (на DC-ACC-01A, DC-ACC-01B и DC-BB-01A)
+<details>
+<summary>Вывод команд диагностики</summary>
+
+```eos
+DC-ACC-01A #
+DC-ACC-01A# show vpc brief
+Legend:
+                (*) - local vPC is down, forwarding via vPC peer-link
+
+vPC domain id                     : 11
+Peer status                       : peer adjacency formed ok
+vPC keep-alive status             : peer is alive
+Configuration consistency status  : success
+Per-vlan consistency status       : success
+Type-2 consistency status         : success
+vPC role                          : primary
+Number of vPCs configured         : 3
+Peer Gateway                      : Enabled
+Dual-active excluded VLANs        : -
+Graceful Consistency Check        : Enabled
+Auto-recovery status              : Enabled, timer is off.(timeout = 240s)
+Delay-restore status              : Timer is off.(timeout = 1s)
+Delay-restore SVI status          : Timer is off.(timeout = 10s)
+Delay-restore Orphan-port status  : Timer is off.(timeout = 0s)
+Operational Layer3 Peer-router    : Enabled
+Virtual-peerlink mode             : Disabled
+
+vPC Peer-link status
+---------------------------------------------------------------------
+id    Port   Status Active vlans
+--    ----   ------ -------------------------------------------------
+1     Po63   up     10,20,30,40,50,1192-1195
+
+vPC status
+----------------------------------------------------------------------------
+Id    Port          Status Consistency Reason                Active vlans
+--    ------------  ------ ----------- ------                ---------------
+1     Po1           up     success     success               10
+2     Po2           up     success     success               20
+3     Po3           up     success     success               30
+
+Please check "show vpc consistency-parameters vpc <vpc-num>" for the
+consistency reason of down vpc and for type-2 consistency reasons for
+any vpc.
+DC-ACC-01A#
+
+DC-ACC-01A# show port-channel summary
+Flags:  D - Down        P - Up in port-channel (members)
+        I - Individual  H - Hot-standby (LACP only)
+        s - Suspended   r - Module-removed
+        b - BFD Session Wait
+        S - Switched    R - Routed
+        U - Up (port-channel)
+        p - Up in delay-lacp mode (member)
+        M - Not in use. Min-links not met
+--------------------------------------------------------------------------------
+Group Port-       Type     Protocol  Member Ports
+      Channel
+--------------------------------------------------------------------------------
+1     Po1(SU)     Eth      LACP      Eth1/1(P)
+2     Po2(SU)     Eth      LACP      Eth1/2(P)
+3     Po3(SU)     Eth      LACP      Eth1/3(P)
+63    Po63(SU)    Eth      LACP      Eth1/63(P)   Eth1/64(P)
+DC-ACC-01A#
+
+DC-ACC-02A #
+DC-ACC-02A# show vpc brief
+Legend:
+                (*) - local vPC is down, forwarding via vPC peer-link
+
+vPC domain id                     : 12
+Peer status                       : peer adjacency formed ok
+vPC keep-alive status             : peer is alive
+Configuration consistency status  : success
+Per-vlan consistency status       : success
+Type-2 consistency status         : success
+vPC role                          : primary
+Number of vPCs configured         : 1
+Peer Gateway                      : Enabled
+Dual-active excluded VLANs        : -
+Graceful Consistency Check        : Enabled
+Auto-recovery status              : Enabled, timer is off.(timeout = 240s)
+Delay-restore status              : Timer is off.(timeout = 1s)
+Delay-restore SVI status          : Timer is off.(timeout = 10s)
+Delay-restore Orphan-port status  : Timer is off.(timeout = 0s)
+Operational Layer3 Peer-router    : Enabled
+Virtual-peerlink mode             : Disabled
+
+vPC Peer-link status
+---------------------------------------------------------------------
+id    Port   Status Active vlans
+--    ----   ------ -------------------------------------------------
+1     Po63   up     10,20,30,40,50,1192-1195
+
+vPC status
+----------------------------------------------------------------------------
+Id    Port          Status Consistency Reason                Active vlans
+--    ------------  ------ ----------- ------                ---------------
+1     Po1           up     success     success               40
+
+Please check "show vpc consistency-parameters vpc <vpc-num>" for the
+consistency reason of down vpc and for type-2 consistency reasons for
+any vpc.
+
+DC-ACC-02A#
+DC-ACC-02A# show port-channel summary
+Flags:  D - Down        P - Up in port-channel (members)
+        I - Individual  H - Hot-standby (LACP only)
+        s - Suspended   r - Module-removed
+        b - BFD Session Wait
+        S - Switched    R - Routed
+        U - Up (port-channel)
+        p - Up in delay-lacp mode (member)
+        M - Not in use. Min-links not met
+--------------------------------------------------------------------------------
+Group Port-       Type     Protocol  Member Ports
+      Channel
+--------------------------------------------------------------------------------
+1     Po1(SU)     Eth      LACP      Eth1/1(P)
+63    Po63(SU)    Eth      LACP      Eth1/63(P)   Eth1/64(P)
+DC-ACC-02A#
+
+DC-ACC-03A #
+DC-ACC-03A# show vpc brief
+Legend:
+                (*) - local vPC is down, forwarding via vPC peer-link
+
+vPC domain id                     : 13
+Peer status                       : peer adjacency formed ok
+vPC keep-alive status             : peer is alive
+Configuration consistency status  : success
+Per-vlan consistency status       : success
+Type-2 consistency status         : success
+vPC role                          : primary
+Number of vPCs configured         : 2
+Peer Gateway                      : Enabled
+Dual-active excluded VLANs        : -
+Graceful Consistency Check        : Enabled
+Auto-recovery status              : Enabled, timer is off.(timeout = 240s)
+Delay-restore status              : Timer is off.(timeout = 1s)
+Delay-restore SVI status          : Timer is off.(timeout = 10s)
+Delay-restore Orphan-port status  : Timer is off.(timeout = 0s)
+Operational Layer3 Peer-router    : Enabled
+Virtual-peerlink mode             : Disabled
+
+vPC Peer-link status
+---------------------------------------------------------------------
+id    Port   Status Active vlans
+--    ----   ------ -------------------------------------------------
+1     Po63   up     10,20,30,40,50,1192-1195
+
+vPC status
+----------------------------------------------------------------------------
+Id    Port          Status Consistency Reason                Active vlans
+--    ------------  ------ ----------- ------                ---------------
+1     Po1           up     success     success               10
+2     Po2           up     success     success               20
+
+Please check "show vpc consistency-parameters vpc <vpc-num>" for the
+consistency reason of down vpc and for type-2 consistency reasons for
+any vpc.
+
+DC-ACC-03A#  show port-channel summary
+Flags:  D - Down        P - Up in port-channel (members)
+        I - Individual  H - Hot-standby (LACP only)
+        s - Suspended   r - Module-removed
+        b - BFD Session Wait
+        S - Switched    R - Routed
+        U - Up (port-channel)
+        p - Up in delay-lacp mode (member)
+        M - Not in use. Min-links not met
+--------------------------------------------------------------------------------
+Group Port-       Type     Protocol  Member Ports
+      Channel
+--------------------------------------------------------------------------------
+1     Po1(SU)     Eth      LACP      Eth1/1(P)
+2     Po2(SU)     Eth      LACP      Eth1/2(P)
+63    Po63(SU)    Eth      LACP      Eth1/63(P)   Eth1/64(P)
+DC-ACC-03A#
+
+DC-ACC-01B #
+DC-ACC-01B# show vpc brief
+Legend:
+                (*) - local vPC is down, forwarding via vPC peer-link
+
+vPC domain id                     : 11
+Peer status                       : peer adjacency formed ok
+vPC keep-alive status             : peer is alive
+Configuration consistency status  : success
+Per-vlan consistency status       : success
+Type-2 consistency status         : success
+vPC role                          : secondary
+Number of vPCs configured         : 3
+Peer Gateway                      : Enabled
+Dual-active excluded VLANs        : -
+Graceful Consistency Check        : Enabled
+Auto-recovery status              : Enabled, timer is off.(timeout = 240s)
+Delay-restore status              : Timer is off.(timeout = 1s)
+Delay-restore SVI status          : Timer is off.(timeout = 10s)
+Delay-restore Orphan-port status  : Timer is off.(timeout = 0s)
+Operational Layer3 Peer-router    : Enabled
+Virtual-peerlink mode             : Disabled
+
+vPC Peer-link status
+---------------------------------------------------------------------
+id    Port   Status Active vlans
+--    ----   ------ -------------------------------------------------
+1     Po63   up     10,20,30,40,50,1192-1195
+
+vPC status
+----------------------------------------------------------------------------
+Id    Port          Status Consistency Reason                Active vlans
+--    ------------  ------ ----------- ------                ---------------
+1     Po1           up     success     success               10
+2     Po2           up     success     success               20
+3     Po3           up     success     success               30
+
+Please check "show vpc consistency-parameters vpc <vpc-num>" for the
+consistency reason of down vpc and for type-2 consistency reasons for
+any vpc.
+
+DC-ACC-01B# show port-channel summary
+Flags:  D - Down        P - Up in port-channel (members)
+        I - Individual  H - Hot-standby (LACP only)
+        s - Suspended   r - Module-removed
+        b - BFD Session Wait
+        S - Switched    R - Routed
+        U - Up (port-channel)
+        p - Up in delay-lacp mode (member)
+        M - Not in use. Min-links not met
+--------------------------------------------------------------------------------
+Group Port-       Type     Protocol  Member Ports
+      Channel
+--------------------------------------------------------------------------------
+1     Po1(SU)     Eth      LACP      Eth1/1(P)
+2     Po2(SU)     Eth      LACP      Eth1/2(P)
+3     Po3(SU)     Eth      LACP      Eth1/3(P)
+63    Po63(SU)    Eth      LACP      Eth1/63(P)   Eth1/64(P)
+DC-ACC-01B#
+DC-ACC-02B #
+DC-ACC-02B# show vpc brief
+Legend:
+                (*) - local vPC is down, forwarding via vPC peer-link
+
+vPC domain id                     : 12
+Peer status                       : peer adjacency formed ok
+vPC keep-alive status             : peer is alive
+Configuration consistency status  : success
+Per-vlan consistency status       : success
+Type-2 consistency status         : success
+vPC role                          : secondary
+Number of vPCs configured         : 1
+Peer Gateway                      : Enabled
+Dual-active excluded VLANs        : -
+Graceful Consistency Check        : Enabled
+Auto-recovery status              : Disabled
+Delay-restore status              : Timer is off.(timeout = 30s)
+Delay-restore SVI status          : Timer is off.(timeout = 10s)
+Delay-restore Orphan-port status  : Timer is off.(timeout = 0s)
+Operational Layer3 Peer-router    : Enabled
+Virtual-peerlink mode             : Disabled
+
+vPC Peer-link status
+---------------------------------------------------------------------
+id    Port   Status Active vlans
+--    ----   ------ -------------------------------------------------
+1     Po63   up     10,20,30,40,50,1192-1195
+
+vPC status
+----------------------------------------------------------------------------
+Id    Port          Status Consistency Reason                Active vlans
+--    ------------  ------ ----------- ------                ---------------
+1     Po1           up     success     success               40
+
+Please check "show vpc consistency-parameters vpc <vpc-num>" for the
+consistency reason of down vpc and for type-2 consistency reasons for
+any vpc.
+
+DC-ACC-02B#
+DC-ACC-02B# show port-channel summary
+Flags:  D - Down        P - Up in port-channel (members)
+        I - Individual  H - Hot-standby (LACP only)
+        s - Suspended   r - Module-removed
+        b - BFD Session Wait
+        S - Switched    R - Routed
+        U - Up (port-channel)
+        p - Up in delay-lacp mode (member)
+        M - Not in use. Min-links not met
+--------------------------------------------------------------------------------
+Group Port-       Type     Protocol  Member Ports
+      Channel
+--------------------------------------------------------------------------------
+1     Po1(SU)     Eth      LACP      Eth1/1(P)
+63    Po63(SU)    Eth      LACP      Eth1/63(P)   Eth1/64(P)
+DC-ACC-02B#
+
+DC-ACC-03B #
+DC-ACC-03B# show vpc brief
+Legend:
+                (*) - local vPC is down, forwarding via vPC peer-link
+
+vPC domain id                     : 13
+Peer status                       : peer adjacency formed ok
+vPC keep-alive status             : peer is alive
+Configuration consistency status  : success
+Per-vlan consistency status       : success
+Type-2 consistency status         : success
+vPC role                          : secondary
+Number of vPCs configured         : 2
+Peer Gateway                      : Enabled
+Dual-active excluded VLANs        : -
+Graceful Consistency Check        : Enabled
+Auto-recovery status              : Disabled
+Delay-restore status              : Timer is off.(timeout = 30s)
+Delay-restore SVI status          : Timer is off.(timeout = 10s)
+Delay-restore Orphan-port status  : Timer is off.(timeout = 0s)
+Operational Layer3 Peer-router    : Enabled
+Virtual-peerlink mode             : Disabled
+
+vPC Peer-link status
+---------------------------------------------------------------------
+id    Port   Status Active vlans
+--    ----   ------ -------------------------------------------------
+1     Po63   up     10,20,30,40,50,1192-1195
+
+vPC status
+----------------------------------------------------------------------------
+Id    Port          Status Consistency Reason                Active vlans
+--    ------------  ------ ----------- ------                ---------------
+1     Po1           up     success     success               10
+2     Po2           up     success     success               20
+
+Please check "show vpc consistency-parameters vpc <vpc-num>" for the
+consistency reason of down vpc and for type-2 consistency reasons for
+any vpc.
+
+DC-ACC-03B# show port-channel summary
+Flags:  D - Down        P - Up in port-channel (members)
+        I - Individual  H - Hot-standby (LACP only)
+        s - Suspended   r - Module-removed
+        b - BFD Session Wait
+        S - Switched    R - Routed
+        U - Up (port-channel)
+        p - Up in delay-lacp mode (member)
+        M - Not in use. Min-links not met
+--------------------------------------------------------------------------------
+Group Port-       Type     Protocol  Member Ports
+      Channel
+--------------------------------------------------------------------------------
+1     Po1(SU)     Eth      LACP      Eth1/1(P)
+2     Po2(SU)     Eth      LACP      Eth1/2(P)
+63    Po63(SU)    Eth      LACP      Eth1/63(P)   Eth1/64(P)
+DC-ACC-03B#
+
+```	
+</details>
+
+#### 3.3. Проверка Anycast VTEP и BGP EVPN Control Plane (на DC-COR-01A / Spine-1 и DC-ACC-01A)
+
+<details>
+<summary>Вывод команд диагностики</summary>
+
+```eos
+DC-COR-01A / Spine-1
+DC-COR-01A# show bgp l2vpn evpn summary
+BGP summary information for VRF default, address family L2VPN EVPN
+BGP router identifier 10.1.255.1, local AS number 65001
+BGP table version is 2018, L2VPN EVPN config peers 9, capable peers 8
+252 network entries and 252 paths using 91728 bytes of memory
+BGP attribute entries [102/37536], BGP AS path entries [0/0]
+BGP community entries [0/0], BGP clusterlist entries [0/0]
+
+Neighbor        V    AS    MsgRcvd    MsgSent   TblVer  InQ OutQ Up/Down  State/
+PfxRcd
+10.1.255.11     4 65001       1957       1929     2018    0    0 01:35:30 20
+10.1.255.12     4 65001        734        720     2018    0    0 00:35:25 20
+10.1.255.13     4 65001       8601       8647     2018    0    0 07:08:32 16
+10.1.255.14     4 65001       8476       8525     2018    0    0 07:02:34 12
+10.1.255.15     4 65001       1888       1881     2018    0    0 01:32:37 16
+10.1.255.16     4 65001       1785       1782     2018    0    0 01:27:44 12
+10.1.255.251    4 65001       9528       9561     2018    0    0 07:54:31 78
+10.1.255.252    4 65001       9304       9341     2018    0    0 07:43:35 78
+
+Neighbor        T    AS Type-1     Type-2     Type-3     Type-4     Type-5     T
+ype-6     Type-7     Type-8     Type-12
+10.1.255.11     I 65001 0          10         5          0          5          0
+          0          0          0
+10.1.255.12     I 65001 0          10         5          0          5          0
+          0          0          0
+10.1.255.13     I 65001 0          6          5          0          5          0
+          0          0          0
+10.1.255.14     I 65001 0          2          5          0          5          0
+          0          0          0
+10.1.255.15     I 65001 0          6          5          0          5          0
+          0          0          0
+10.1.255.16     I 65001 0          2          5          0          5          0
+          0          0          0
+10.1.255.251    I 65001 0          4          5          0          69         0
+          0          0          0
+10.1.255.252    I 65001 0          4          5          0          69         0
+          0          0          0
+DC-COR-01A#  show nve peers
+DC-COR-01A#  show nve vni
+DC-COR-01A#
+
+DC-ACC-01A
+DC-ACC-01A# show bgp l2vpn evpn summary
+BGP summary information for VRF default, address family L2VPN EVPN
+BGP router identifier 10.1.255.11, local AS number 65001
+BGP table version is 761, L2VPN EVPN config peers 2, capable peers 2
+348 network entries and 675 paths using 137696 bytes of memory
+BGP attribute entries [341/125488], BGP AS path entries [0/0]
+BGP community entries [0/0], BGP clusterlist entries [14/56]
+
+Neighbor        V    AS    MsgRcvd    MsgSent   TblVer  InQ OutQ Up/Down  State/
+PfxRcd
+10.1.255.1      4 65001       2220       1918      761    0    0 01:35:27 217
+10.1.255.2      4 65001       2224       1919      761    0    0 01:35:32 217
+
+Neighbor        T    AS Type-1     Type-2     Type-3     Type-4     Type-5     T
+ype-6     Type-7     Type-8     Type-12
+10.1.255.1      I 65001 0          24         30         0          163        0
+          0          0          0
+10.1.255.2      I 65001 0          24         30         0          163        0
+          0          0          0
+DC-ACC-01A#
+DC-ACC-01A# show nve peers
+Interface Peer-IP                                 State LearnType Uptime   Route
+r-Mac
+--------- --------------------------------------  ----- --------- -------- -----
+------------
+nve1      10.1.254.12                             Up    CP        00:35:33 520a.
+9beb.1b08
+nve1      10.1.254.13                             Up    CP        01:35:38 5263.
+a648.1b08
+nve1      10.1.254.15                             Up    CP        01:27:56 5239.
+6860.1b08
+nve1      10.1.254.242                            Up    CP        01:35:38 0200.
+0a01.fef2
+nve1      10.1.254.243                            Up    CP        01:27:56 0200.
+0a01.fef3
+nve1      10.1.254.250                            Up    CP        01:35:38 0200.
+0a01.fefa
+nve1      10.1.254.251                            Up    CP        01:35:38 526a.
+8ea5.1b08
+nve1      10.1.254.252                            Up    CP        01:35:38 5261.
+beee.1b08
+
+DC-ACC-01A#  show nve vni
+Codes: CP - Control Plane        DP - Data Plane
+       UC - Unconfigured         SA - Suppress ARP
+       S-ND - Suppress ND
+       SU - Suppress Unknown Unicast
+       Xconn - Crossconnect
+       MS-IR - Multisite Ingress Replication
+       HYB - Hybrid IRB mode
+
+Interface VNI      Multicast-group   State Mode Type [BD/VRF]      Flags
+--------- -------- ----------------- ----- ---- ------------------ -----
+nve1      10010    UnicastBGP        Up    CP   L2 [10]            SA
+nve1      10020    UnicastBGP        Up    CP   L2 [20]            SA
+nve1      10030    UnicastBGP        Up    CP   L2 [30]            SA
+nve1      10040    UnicastBGP        Up    CP   L2 [40]            SA
+nve1      10050    UnicastBGP        Up    CP   L2 [50]            SA
+nve1      50192    n/a               Up    CP   L3 [vrf_DC-FE]
+nve1      50193    n/a               Up    CP   L3 [vrf_DC-BE]
+nve1      50194    n/a               Up    CP   L3 [vrf_DC-DB]
+nve1      50195    n/a               Up    CP   L3 [vrf_DC-CORP]
+
+DC-ACC-01A#
+
+```	
+</details>
+
 ## 10. Презентация
-**Цель:** Подготовить новую точку выхода во внешний мир и между зонами безопасности на уровне DC-BB без прерывания действующего трафика (который продолжает ходить через ядро DC-COR-01A/B). Для исключения потерь при единичном обрыве аплинка поднимается временный межблочный L3-канал Po47 между DC-BB-01A и DC-BB-01B, а для связки старого и нового L2-доменов создаётся изолированный от STP мост Po49.
+
 
 
 ...

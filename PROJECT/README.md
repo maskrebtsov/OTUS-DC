@@ -2214,6 +2214,7 @@ end
 #### 2.2. Отключение HSRP и старых внешних стыков с МСЭ на ядре плеча «A» (DC-COR-01A)
 <details>
 <summary>Применяем набор команд</summary>
+	
 ```eos
 ! --- На DC-COR-01A ---
 configure terminal
@@ -2224,24 +2225,28 @@ interface Ethernet1/59.192, Ethernet1/59.193, Ethernet1/59.194, Ethernet1/59.195
 interface Ethernet1/60.192, Ethernet1/60.193, Ethernet1/60.194, Ethernet1/60.195
   shutdown
 end
+
 ```	
 </details>
 
 #### 2.3. Активация Distributed Anycast Gateway на узлах плеча «B»
 <details>
 <summary>Применяем набор команд</summary>
+	
 ```eos
 ! --- Выполнить на DC-ACC-01B, DC-ACC-02B, DC-ACC-03B и DC-BB-01B ---
 configure terminal
 interface Vlan10, Vlan20, Vlan30, Vlan40, Vlan50
   no shutdown
 end
+
 ```	
 </details>
 
 #### 2.4. Включение клиентских портов доступа на плече «B» (без влияния на трафик)
 <details>
 <summary>Применяем набор команд</summary>
+	
 ```eos
 ! На DC-ACC-01B:
 configure terminal
@@ -2258,6 +2263,7 @@ configure terminal
 interface Ethernet1/1 - 2
   no shutdown
 end
+
 ```	
 </details>
 
@@ -2267,6 +2273,7 @@ end
 #### 3.1. DC-COR-01A → Spine-1 (AS 65001)
 <details>
 <summary>Очищаем наследие классического ядра на DC-COR-01A (удаляем feature vpc, feature hsrp, feature interface-vlan, старые клиентские VLAN, SVI и межблочные транки) и переводим коммутатор в роль чистого IP-транзита (Spine-1, BGP Route Reflector 10.1.255.1)</summary>
+	
 ```eos
 configure terminal
 ! --- 1. Демонтаж классической архитектуры ядра ---
@@ -2376,12 +2383,14 @@ router bgp 65001
     inherit peer peer_SPINE_EVPN
     description to_VTEPs_EVPN
 end
+
 ```	
 </details>
 
 #### 3.2. DC-ACC-01A → Leaf-1A
 <details>
 <summary>Применяем набор команд</summary>
+	
 ```eos
 configure terminal
 ! --- 1. Очистка старого аплинка Po61 ---
@@ -2640,12 +2649,14 @@ evpn
     route-target export auto
     route-target export 65001:10050
 end
+
 ```	
 </details>
 
 #### 3.3. DC-ACC-02A → Leaf-2A
 <details>
 <summary>Аналогично п. 3.2 (DC-ACC-01A) со своими индивидуальными параметрами:</summary>
+	
 ```eos
 configure terminal
 no interface port-channel61
@@ -2895,12 +2906,14 @@ evpn
     route-target export auto
     route-target export 65001:10050
 end
+
 ```	
 </details>
 
 #### 3.4. DC-ACC-03A → Leaf-3A
 <details>
 <summary>Аналогично п. 3.2 (DC-ACC-01A) со своими индивидуальными параметрами</summary>
+	
 ```eos
 configure terminal
 no interface port-channel61
@@ -3150,12 +3163,14 @@ evpn
     route-target export auto
     route-target export 65001:10050
 end
+
 ```	
 </details>
 
 #### 3.5. DC-BB-01A → Border Leaf-1
 <details>
 <summary>Демонтируем временные Po47 и Po49, настраиваем VRF, VNI, раздельные политики OSPF ↔ BGP EVPN с филиалами 192.168.0.0/16 le 32 и пиринг к обоим Spine).</summary>
+	
 ```eos
 configure terminal
 ! --- 1. Демонтаж временных мостов Po47, Po49 и отключение старых портов ---
@@ -3478,12 +3493,14 @@ evpn
     route-target export auto
     route-target export 65001:10050
 end
+
 ```	
 </details>
 
 #### 3.6. Подключение второго аплинка к Spine-1 (DC-COR-01A) на узлах плеча «B» и демонтаж Po47 на DC-BB-01B
 <details>
 <summary>Применяем набор команд</summary>
+	
 ```eos
 ! --- На DC-ACC-01B ---
 configure terminal
@@ -3561,6 +3578,7 @@ router bgp 65001
     inherit peer peer_LEAF_EVPN
     description to_Spine1_EVPN
 end
+
 ```	
 </details>
 
@@ -3569,6 +3587,7 @@ end
 <summary>Объединяем парные коммутаторы доступа (DC-ACC-01A/B, 02A/B, 03A/B) и пограничные узлы (DC-BB-01A/B) в единые отказоустойчивые домены vPC VXLAN с общими виртуальными адресами VTEP (Anycast VTEP Secondary IP), активируем анонс первичных адресов VTEP (advertise-pip) и виртуальных MAC-адресов маршрутизатора (advertise virtual-rmac), а также возвращаем в работу клиентские порты левого плеча («A») для восстановления полноценного подключения серверов (Dual-Homed LACP).</summary>
 Примечание (особенность виртуальной платформы Cisco Nexus 9300v):
 	При выполнении этапа 3.7 в среде имитационного моделирования (CML) на виртуальных образах Cisco Nexus 9300v повторная активация feature vpc при уже сконфигурированном туннельном интерфейсе interface nve1 приводит к рассинхронизации программного эмулятора Data Plane (ошибка проверки консистентности NVE is only configured on remote vpc и переход интерфейса nve1 в режим VPC-VIP-Only с блокировкой Loopback1 до согласования Secondary IP на обеих нодах пары). На аппаратных коммутаторах серии Cisco Nexus 9000 с физическим ASIC Cloud Scale синхронизация vPC ↔ NVE выполняется аппаратно без прерывания трафика. В лабораторном стенде для завершения инициализации программного эмулятора VTEP после применения конфигурации этапа 3.7 выполняется сохранение конфигурации (copy running-config startup-config) и перезагрузка (reload) узлов плеча «A» и «B». Для корректной работы LACP на стороне конечных хостов в среде CML образы Catalyst 8000v заменены на Cisco IOSvL2 (в связи с дефектом виртуального Broadcom SDK MTS_OPC_PIXM_MOD_MEMB_LTL).
+	
 ```eos
 ! --- DC-ACC-01B(Leaf-1B) ---
 configure terminal
@@ -3744,6 +3763,7 @@ router bgp 65001
   address-family l2vpn evpn
     advertise-pip
 end
+
 ```	
 </details>
 

@@ -1089,6 +1089,7 @@ end
 
 <details>
 <summary>Изолируем узел (no feature vpc, отключаем клиентские порты Eth1/1–3, межкоммутаторный канал Po63 и mgmt0), демонтируем старый аплинк Po61, настраиваем VXLAN L2/L3 VNI (10010–10050, 50192–50195), строгую изоляцию VRF (без Route Leaking), Distributed Anycast Gateway (оставляем в состоянии shutdown до Этапа 2), интерфейс nve1 и пиринг iBGP со Spine-2 (10.1.242.2 / 10.1.255.2).</summary>
+
 ```eos
 	
 	configure terminal

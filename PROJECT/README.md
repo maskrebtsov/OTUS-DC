@@ -499,7 +499,31 @@ DC2 - 10.2.0.0/16 (reserved)<br>
 
 ## 8. Приложение 1. Изначальные конфигурации сетевого оборудования в лабораторном стенде
 
-...
+**Ядро сети:** <br>
+[DC-COR-01A](./DAY-0_CONFIGS/DC-COR-01A.txt)<br>
+[DC-COR-01B](./DAY-0_CONFIGS/DC-COR-01B.txt)<br>
+
+**TOR-пары коммутаторов доступа:** <br>
+[DC-ACC-01A](./DAY-0_CONFIGS/DC-ACC-01A.txt)<br>
+[DC-ACC-01B](./DAY-0_CONFIGS/DC-ACC-01B.txt)<br>
+
+[DC-ACC-02A](./DAY-0_CONFIGS/DC-ACC-02A.txt)<br>
+[DC-ACC-02B](./DAY-0_CONFIGS/DC-ACC-02B.txt)<br>
+
+[DC-ACC-03A](./DAY-0_CONFIGS/DC-ACC-03A.txt)<br>
+[DC-ACC-03B](./DAY-0_CONFIGS/DC-ACC-03B.txt)<br>
+
+**BackBone коммутаторы сети:** <br>
+[DC-BB-01A](./DAY-0_CONFIGS/DC-BB-01A.txt)<br>
+[DC-BB-01B](./DAY-0_CONFIGS/DC-BB-01B.txt)<br>
+
+**Имитация EDGE/Пограничных файрволов:** <br>
+[DC-EXT-01](./DAY-0_CONFIGS/DC-EXT-01.txt)<br>
+[DC-EXT-02](./DAY-0_CONFIGS/DC-EXT-02.txt)<br>
+
+**Оконечные устройства (Hosts/Branch, на примере одного каждого типа):** <br>
+[BRANCH_1](./DAY-0_CONFIGS/BRANCH_1.txt)<br>
+[HOST_1-1_VL10_10.1.10.11](./DAY-0_CONFIGS/HOST_1-1_VL10_10.1.10.11.txt)<br>
 
 ## 9. Приложение 2. Поэтапные конфигурации CLI сетевого оборудования
 
